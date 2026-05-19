@@ -351,8 +351,9 @@ if __name__ == "__main__":
                         help="Only start instances and create save files")
     parser.add_argument("--no-launch", action="store_true",
                         help="Skip launching instances (if already running)")
-    args = parser.parse_args()
-
+    args, unknown_args = parser.parse_known_args()
+    # unknown_args enthält z.B. ["--headless", "--fast"]
+    BALATROBOT_FLAGS.extend(unknown_args)
     manager = BalatrobotManager(PORTS)
 
     if not args.no_launch:

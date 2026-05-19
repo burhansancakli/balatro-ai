@@ -27,8 +27,8 @@ SEED            = "TRAIN01"
 MAX_STEPS       = 500
 RPC_TIMEOUT     = 60       # generous timeout for slow transitions
 RPC_RETRIES     = 3        # retry count on timeout
-RPC_RETRY_WAIT  = 1.0      # seconds between retries
-POLL_INTERVAL   = 0.1      # seconds between state polls
+RPC_RETRY_WAIT  = 0.5     # seconds between retries
+POLL_INTERVAL   = 0.02      # seconds between state polls
 POLL_TIMEOUT    = 30.0     # max seconds to wait for a state transition
 
 
