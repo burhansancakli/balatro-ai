@@ -1,9 +1,20 @@
 -- RL environment simplification
 
-local ALLOWED_JOKER_LIST = {
+local ALLOWED_JOKER_LIST ={
     "j_joker",
     "j_lusty_joker",
-    "j_jolly"
+    "j_jolly",
+    "j_droll",        
+    "j_crafty",       
+    "j_smeared",      
+    "j_zany",         
+    "j_mad",          
+    "j_sly",          
+    "j_wily",         
+    "j_abstract",     
+    "j_half",         
+    "j_scary_face",   
+    "j_greedy_joker",       
 }
 
 local function is_allowed_key(key)
