@@ -4,3 +4,4 @@ logs/
 balatro_saves/
 .DS_Store
 __pycache__/
+benchmark_game_saves/
