@@ -13,6 +13,8 @@ Requirements:
 """
 
 import os
+from pathlib import Path
+import random
 import time
 import argparse
 import subprocess
@@ -38,9 +40,10 @@ from env import BalatroEnv, DECK, STAKE
 # ─────────────────────────────────────────────────────────────
 
 PORTS  = [12346, 12347, 12348, 12349]
+#PORTS = random.sample(range(10000, 65535), 4)
 SEEDS  = ["TRAIN01", "TRAIN02", "TRAIN03", "TRAIN04"]
 
-SAVE_DIR        = "C:/tmp/balatro_saves"
+SAVE_DIR = Path.cwd() / "balatro_saves"
 MODEL_DIR       = "./models"
 LOG_DIR         = "./logs"
 TOTAL_STEPS     = 100_000
@@ -60,7 +63,7 @@ BALATROBOT_FLAGS = [
     "--gamespeed", "4",
 ]
 
-HEALTH_TIMEOUT   = 60   # seconds to wait for instance to become healthy
+HEALTH_TIMEOUT   = 5   # seconds to wait for instance to become healthy
 HEALTH_INTERVAL  = 2    # seconds between health check polls
 
 
@@ -100,7 +103,7 @@ class BalatrobotManager:
                 cmd,
                 stdout = subprocess.DEVNULL,
                 stderr = subprocess.DEVNULL,
-                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+                
             )
             self.processes[port] = proc
             return True
@@ -148,21 +151,9 @@ class BalatrobotManager:
         for port in self.ports:
             if not self.wait_healthy(port):
                 all_ok = False
+                break
 
         return all_ok
-
-    def is_alive(self, port: int) -> bool:
-        """Check if the process for this port is still running."""
-        proc = self.processes.get(port)
-        if proc is None:
-            return False
-        return proc.poll() is None
-
-    def restart_instance(self, port: int) -> bool:
-        """Restart a crashed instance."""
-        print(f"  [port {port}] Restarting crashed instance...")
-        self.start_instance(port)
-        return self.wait_healthy(port)
 
     def kill_instance(self, port: int):
         proc = self.processes.get(port)
@@ -171,10 +162,15 @@ class BalatrobotManager:
                 if os.name == "nt":
                     proc.send_signal(signal.CTRL_BREAK_EVENT)
                 else:
-                    proc.terminate()
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # kill entire group
                 proc.wait(timeout=5)
+            except ProcessLookupError:
+                pass  # already dead
             except Exception:
-                proc.kill()
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # force kill
+                except Exception:
+                    proc.kill()
         self.processes.pop(port, None)
 
     def kill_all(self):

@@ -1,0 +1,6 @@
+stable-baselines3
+tqdm
+rich
+gymnasium 
+requests 
+numpy

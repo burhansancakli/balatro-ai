@@ -89,6 +89,11 @@ python train.py
 tensorboard --logdir ./logs
 ```
 
+# Notes
+
+If you're a Mac user, you a popup about "Application closed unexpectedly" could repeteadly show up. In order to disable this, you can use the following terminal code „defaults write com.apple.CrashReporter DialogType none”
+
+
 ## Baseline Comparison
 
 The flat PPO baseline uses the same env and obs space but:
