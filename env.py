@@ -7,6 +7,7 @@ for parallel training via stable-baselines3 SubprocVecEnv.
 """
 
 import time
+from pathlib import Path
 import numpy as np
 import requests
 import gymnasium as gym
@@ -157,7 +158,7 @@ class BalatroEnv(gym.Env):
     def __init__(
         self,
         port: int = 12346,
-        save_path: str = "C:/tmp/fresh_balatro.jkr",
+        save_path: str = Path.cwd() / "fresh_balatro.jkr",
         seed: str = SEED,
         render_mode: Optional[str] = None,
     ):
@@ -223,7 +224,7 @@ class BalatroEnv(gym.Env):
         self._current_strategy = strategy
         self._steps += 1
 
-        total_reward, gamestate, done = self._play_ante(strategy)
+        total_reward, gamestate, done, hand_logs = self._play_ante(strategy)
 
         self._episode_reward += total_reward
         self._last_gamestate  = gamestate
@@ -238,6 +239,7 @@ class BalatroEnv(gym.Env):
             "round":          gamestate.get("round_num", 0),
             "won":            gamestate.get("won", False),
             "episode_reward": self._episode_reward,
+            "hand_logs":      hand_logs,
         }
 
         return obs, total_reward, terminated, truncated, info
@@ -247,13 +249,14 @@ class BalatroEnv(gym.Env):
 
     # ─── Internal: ante execution ─────────────────────────────
 
-    def _play_ante(self, strategy: Strategy) -> Tuple[float, dict, bool]:
+    def _play_ante(self, strategy: Strategy) -> Tuple[float, dict, bool, list]:
         """
         Play through one full ante (all rounds until shop).
-        Returns (total_reward, final_gamestate, is_done).
+        Returns (total_reward, final_gamestate, is_done, hand_logs).
         """
         total_reward = 0.0
         state        = self._last_gamestate
+        hand_logs    = []
         max_loops    = 1000
         loop_count   = 0
 
@@ -264,7 +267,7 @@ class BalatroEnv(gym.Env):
             # ── Terminal ────────────────────────────────────────
             if current == "GAME_OVER":
                 total_reward += self._outcome_reward(state)
-                return total_reward, state, True
+                return total_reward, state, True, hand_logs
 
             # ── Blind select (fallback — mod should handle this) ─
             elif current == "BLIND_SELECT":
@@ -275,8 +278,10 @@ class BalatroEnv(gym.Env):
 
             # ── Play a hand ─────────────────────────────────────
             elif current == "SELECTING_HAND":
-                state, reward = self._play_hand(state, strategy)
+                state, reward, hand_log = self._play_hand(state, strategy)
                 total_reward += reward
+                if hand_log:
+                    hand_logs.append(hand_log)
 
             # ── Cash out after round ────────────────────────────
             elif current == "ROUND_EVAL":
@@ -296,7 +301,7 @@ class BalatroEnv(gym.Env):
                 total_reward += self._outcome_reward(state)
                 # Update current ante tracker
                 self._current_ante = state.get("ante_num", self._current_ante)
-                return total_reward, state, False
+                return total_reward, state, False, hand_logs
 
             # ── Booster pack (mod should prevent this) ──────────
             elif current == "SMODS_BOOSTER_OPENED":
@@ -314,9 +319,9 @@ class BalatroEnv(gym.Env):
                     time.sleep(0.5)
 
         # Safety: exceeded loop limit
-        return total_reward, state, True
+        return total_reward, state, True, hand_logs
 
-    def _play_hand(self, state: dict, strategy: Strategy) -> Tuple[dict, float]:
+    def _play_hand(self, state: dict, strategy: Strategy) -> Tuple[dict, float, str]:
         """Use calculator to pick and play the best hand."""
         hand_cards = parse_cards_from_gamestate(state)
 
@@ -325,9 +330,15 @@ class BalatroEnv(gym.Env):
                 state = self.client.call("gamestate")
             except Exception:
                 pass
-            return state, 0.0
+            return state, 0.0, ""
 
         indices, hand_type, _ = pick_best_play(hand_cards, strategy)
+        played_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
+        hand_summary = (
+            f"[seed {self.seed}] ante={state.get('ante_num','?')} "
+            f"round={state.get('round_num','?')} strategy={strategy.name} "
+            f"hand={hand_type} played=[{', '.join(played_cards)}]"
+        )
 
         try:
             new_state = self.client.call("play", {"cards": indices})
@@ -340,7 +351,7 @@ class BalatroEnv(gym.Env):
         coherence = strategy_coherence_reward(hand_type, strategy)
         reward    = coherence * 0.1
 
-        return new_state, reward
+        return new_state, reward, hand_summary
 
     def _handle_shop(self, state: dict, strategy: Strategy) -> dict:
         """Skip shop and go to next round."""

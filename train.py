@@ -31,6 +31,7 @@ from stable_baselines3.common.callbacks import (
     BaseCallback,
 )
 from stable_baselines3.common.utils import set_random_seed
+from game_status_callback import GameStatusCallback
 
 from env import BalatroEnv, DECK, STAKE
 
@@ -39,8 +40,8 @@ from env import BalatroEnv, DECK, STAKE
 # CONFIG
 # ─────────────────────────────────────────────────────────────
 
-PORTS  = [12346, 12347, 12348, 12349]
-#PORTS = random.sample(range(10000, 65535), 4)
+# PORTS  = [12346, 12347, 12348, 12349]
+PORTS = random.sample(range(10000, 65535), 4)
 SEEDS  = ["TRAIN01", "TRAIN02", "TRAIN03", "TRAIN04"]
 
 SAVE_DIR = Path.cwd() / "balatro_saves"
@@ -50,10 +51,10 @@ TOTAL_STEPS     = 100_000
 N_STEPS         = 256
 BATCH_SIZE      = 64
 N_EPOCHS        = 10
-LEARNING_RATE   = 3e-4
+LEARNING_RATE   = 0.0003
 GAMMA           = 0.99
-EVAL_FREQ       = 2_000
-CHECKPOINT_FREQ = 10_000
+EVAL_FREQ       = 256
+CHECKPOINT_FREQ = 2_000
 
 # Balatrobot server flags — maximum speed
 BALATROBOT_FLAGS = [
@@ -63,7 +64,7 @@ BALATROBOT_FLAGS = [
     "--gamespeed", "4",
 ]
 
-HEALTH_TIMEOUT   = 5   # seconds to wait for instance to become healthy
+HEALTH_TIMEOUT   = 30   # seconds to wait for instance to become healthy
 HEALTH_INTERVAL  = 2    # seconds between health check polls
 
 
@@ -188,9 +189,9 @@ def create_save_files(ports: list, seeds: list):
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     for port, seed in zip(ports, seeds):
-        save_path = os.path.join(SAVE_DIR, f"fresh_{port}.jkr")
+        save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
         url       = f"http://127.0.0.1:{port}"
-        print(f"[port {port}] Creating save file (seed={seed})...")
+        print(f"[seed {seed}] Creating save file...")
 
         try:
             # Check current state
@@ -232,7 +233,7 @@ def create_save_files(ports: list, seeds: list):
 # ─────────────────────────────────────────────────────────────
 
 def make_env(port: int, seed: str, rank: int):
-    save_path = os.path.join(SAVE_DIR, f"fresh_{port}.jkr")
+    save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
         env = BalatroEnv(port=port, save_path=save_path, seed=seed)
@@ -318,6 +319,7 @@ def train(manager: BalatrobotManager):
             render               = False,
         ),
         StrategyLogCallback(),
+        GameStatusCallback(),
     ]
 
     print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
@@ -327,7 +329,7 @@ def train(manager: BalatrobotManager):
     model.learn(
         total_timesteps = TOTAL_STEPS,
         callback        = callbacks,
-        progress_bar    = True,
+        progress_bar    = False,
     )
 
     elapsed = time.time() - t_start
