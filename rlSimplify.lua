@@ -118,16 +118,30 @@ function Game:update(dt)
     orig_update(self, dt)
     enforce_shop()
 
-    -- Disable blind skipping: hide the Skip button during blind select
     if G.STATE == G.STATES.BLIND_SELECT then
-        if G.blind_select_opts then
-            for _, opt in pairs(G.blind_select_opts) do
-                if opt.skip then
-                    opt.skip = false
-                end
+        -- Clear game-level tags every frame
+        if G.GAME then
+            if G.GAME.tags then G.GAME.tags = {} end
+            if G.GAME.blind_on_deck then
+                local boss = G.P_BLINDS[G.GAME.blind_on_deck]
+                if boss and boss.boss then boss.effect = "" end
+            end
+        end
+
+        -- Clear tags from each blind in P_BLINDS
+        if G.P_BLINDS then
+            for _, blind in pairs(G.P_BLINDS) do
+                blind.tag_effect = ""
+                blind.tag = nil
             end
         end
     end
+end
+
+-- Disable skip entirely by overriding the function
+local orig_skip_blind = G.FUNCS.skip_blind
+G.FUNCS.skip_blind = function(e)
+    -- do nothing — skipping disabled
 end
 
 ------------------------------------------------------------------
@@ -231,16 +245,6 @@ if Blind then
     end
 end
 
-------------------------------------------------------------------
--- DISABLE TAGS
--- Tags appear after defeating a blind; hook the tag creation
-------------------------------------------------------------------
-local orig_add_tag = add_tag
-if orig_add_tag then
-    function add_tag(tag)
-        -- Do nothing — tags are disabled
-        return
-    end
-end
+
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")
