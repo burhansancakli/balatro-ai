@@ -129,8 +129,27 @@ function Game:update(dt)
     orig_update(self, dt)
     enforce_shop()
 
+    -- Force face-up cards in ALL states (not just blind select)
+    if G.hand and G.hand.cards then
+        for _, card in ipairs(G.hand.cards) do
+            if card.facing and card.facing == "back" then
+                card:flip()
+            end
+        end
+    end
+
+    -- Force hand size to always be 8
+    if G.GAME and G.GAME.hand_size and G.GAME.hand_size ~= 8 then
+        G.GAME.hand_size = 8
+        if G.hand then G.hand.config.card_limit = 8 end
+    end
+
+    -- Only enforce round-start discard count
+    if G.GAME and G.GAME.current_round and G.GAME.round_resets then
+        G.GAME.round_resets.discards = 4
+    end
+
     if G.STATE == G.STATES.BLIND_SELECT then
-        -- Clear game-level tags every frame
         if G.GAME then
             if G.GAME.tags then G.GAME.tags = {} end
             if G.GAME.blind_on_deck then
@@ -138,8 +157,6 @@ function Game:update(dt)
                 if boss and boss.boss then boss.effect = "" end
             end
         end
-
-        -- Clear tags from each blind in P_BLINDS
         if G.P_BLINDS then
             for _, blind in pairs(G.P_BLINDS) do
                 blind.tag_effect = ""
@@ -204,7 +221,42 @@ end
 ------------------------------------------------------------------
 local orig_start_run = Game.start_run
 function Game:start_run(...)
+    -- Strip boss effects BEFORE orig_start_run so get_new_boss still works
+    -- but effects are already neutralized
+    if G.P_BLINDS then
+        for _, blind in pairs(G.P_BLINDS) do
+            if blind.boss then
+                -- Only null the specific effect-triggering fields
+                blind.boss.triggered = false
+                if type(blind.boss) == "table" then
+                    blind.boss.effect = nil
+                    blind.boss.vars = {}
+                end
+            end
+            blind.effect = ""
+            blind.vars = {}
+            blind.pre_boss = nil
+        end
+    end
+
     orig_start_run(self, ...)
+
+    -- Lock hand_size to never go below 8
+    if G.GAME then
+        local mt = getmetatable(G.GAME) or {}
+        local existing_newindex = mt.__newindex
+        mt.__newindex = function(t, k, v)
+            if k == "hand_size" then
+                rawset(t, k, math.max(v, 8))
+                if G.hand then G.hand.config.card_limit = math.max(v, 8) end
+            elseif existing_newindex then
+                existing_newindex(t, k, v)
+            else
+                rawset(t, k, v)
+            end
+        end
+        setmetatable(G.GAME, mt)
+    end
 
     G.E_MANAGER:add_event(Event({
         trigger = "condition",
@@ -227,6 +279,7 @@ end
 -- DISABLE ALL BOSS BLIND EFFECTS
 ------------------------------------------------------------------
 if Blind then
+
     function Blind:debuff_hand(cards, poker_hand, handname, check)
         return false
     end
@@ -235,27 +288,53 @@ if Blind then
         return false
     end
 
-    function Blind:press_play()
-    end
 
     local orig_set_blind = Blind.set_blind
+
         function Blind:set_blind(blind, reset, silent)
-            if blind and blind.boss then
-            -- Keep boss table intact (game needs boss_colour etc for rendering i think)
-            -- but strip all effect-causing fields
-            blind.boss.triggered = false
-            blind.boss.effect = nil
-            blind.boss.vars = {}
-            -- Clear the effect on the blind itself
-            blind.effect = ""
-            blind.vars = {}
-            blind.pre_boss = nil
-            blind.triggered = false
+
+        local target_hand_size = 8
+        local target_discards = 4
+        local target_hands = 4
+
+        orig_set_blind(self, blind, reset, silent)
+
+        --------------------------------------------------
+        -- REMOVE BOSS CHIP MODIFIERS (The Wall etc.)
+        --------------------------------------------------
+        if self and G.GAME and G.GAME.blind then
+            local normal_chips = get_blind_amount(G.GAME.round_resets.ante)
+
+            self.chips = normal_chips
+            G.GAME.blind.chips = normal_chips
         end
-    orig_set_blind(self, blind, reset, silent)
+
+        --------------------------------------------------
+        -- RESTORE RL CONSTANTS
+        --------------------------------------------------
+        if G.GAME then
+
+            G.GAME.hand_size = target_hand_size
+
+            if G.hand then
+                G.hand.config.card_limit = target_hand_size
+            end
+
+            if G.GAME.round_resets then
+                G.GAME.round_resets.discards = target_discards
+                G.GAME.round_resets.hands = target_hands
+            end
+
+            if G.GAME.current_round then
+                G.GAME.current_round.discards_left =
+                    math.max(G.GAME.current_round.discards_left or 0, target_discards)
+
+                G.GAME.current_round.hands_left =
+                    math.max(G.GAME.current_round.hands_left or 0, target_hands)
+            end
+        end
     end
 end
-
 
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")

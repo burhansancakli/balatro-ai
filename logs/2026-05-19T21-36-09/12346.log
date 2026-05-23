@@ -1,0 +1,259 @@
+INFO - [♥] Lovely 0.9.0
+INFO - [♥] Game directory is at "C:\\Games\\Balatro"
+INFO - [♥] Writing logs to "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\log"
+INFO - [♥] Using mod directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods"
+INFO - [♥] 'balatrobot-1.4.1' was found in blacklist, skipping it.
+INFO - [♥] 'balatrobot-1.4.1.zip' was found in blacklist, skipping it.
+INFO - [♥] Cleaning up dump directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\dump"
+INFO - [♥] Cleaning up game-dump directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\game-dump"
+INFO - [♥] Initialization complete in 39ms
+INFO - [♥] Applied 9 patches to 'main.lua'
+INFO - [♥] Applied 5 patches to 'engine/controller.lua'
+INFO - [♥] Applied 15 patches to 'back.lua'
+INFO - [♥] Applied 10 patches to 'tag.lua'
+INFO - [♥] Applied 5 patches to 'engine/event.lua'
+INFO - [♥] Applied 1 patch to 'engine/node.lua'
+INFO - [♥] Applied 2 patches to 'engine/moveable.lua'
+INFO - [♥] Applied 2 patches to 'engine/sprite.lua'
+INFO - [♥] Applied 4 patches to 'engine/animatedsprite.lua'
+INFO - [♥] Applied 78 patches to 'functions/misc_functions.lua'
+INFO - [♥] Applied 52 patches to 'game.lua'
+INFO - [♥] Applied 1 patch to 'globals.lua'
+INFO - [♥] Applied 7 patches to 'engine/ui.lua'
+WARN - [♥] Pattern '{card_limit = 5, type = \'play\'})\n' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\card_limit.toml resulted in no matches
+WARN - [♥] Pattern 'label = \"Production\",\nchosen = true,\n' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\deck_skins.toml resulted in no matches
+WARN - [♥] Pattern 'label = \"Collabs\",' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\deck_skins.toml resulted in no matches
+INFO - [♥] Applied 113 patches to 'functions/UI_definitions.lua'
+INFO - [♥] Applied 58 patches to 'functions/state_events.lua'
+INFO - [♥] Applied 127 patches to 'functions/common_events.lua'
+INFO - [♥] Applied 57 patches to 'functions/button_callbacks.lua'
+WARN - [♥] Pattern 'self.VT.h = self.T.H\nself.VT.w = self.T.w\n' on target 'card.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\joker_size.toml resulted in no matches
+INFO - [♥] Applied 222 patches to 'card.lua'
+INFO - [♥] Applied 19 patches to 'cardarea.lua'
+INFO - [♥] Applied 42 patches to 'blind.lua'
+INFO - [♥] Applied 10 patches to 'card_character.lua'
+INFO - [♥] Applied 15 patches to 'engine/text.lua'
+INFO - [G] Failed to connect to the debug server
+INFO - [G] 2026-05-19 21:36:15 :: DEBUG :: DebugConsole :: Steamodded Debug Socket started !
+INFO - [G] 2026-05-19 21:36:15 :: INFO  :: SMODS :: Steamodded v1.0.0~BETA-1221a
+INFO - [♥] Applied 9 patches to 'engine/sound_manager.lua'
+INFO - [♥] Applied 1 patch to 'engine/save_manager.lua'
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: Loader :: Valid JSON file found
+INFO - [G] 2026-05-19 21:36:16 :: TRACE :: Loader :: Processing Mod file (Legacy header): main.lua
+INFO - [G] 2026-05-19 21:36:16 :: WARN  :: Loader :: Mod file main.lua is missing required header component: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/balatrobot-1.4.1/.claude/settings.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/balatrobot-1.4.1/.mux/mcp.jsonc, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: Loader :: Valid JSON file found
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/back.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/blind.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/card.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/card_character.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/cardarea.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/game.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/globals.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/main.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/tag.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/back.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/blind.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/card.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/card_character.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/cardarea.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/game.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/globals.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/main.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/tag.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: BB.RL :: RL SIMPLIFY LOADED
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: BalatroRL :: BalatroRL loaded
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.SETTINGS :: Patched love.update with dt=0.016666666666667
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.SERVER :: Loaded OpenRPC spec from C:\Users\Aagat\AppData\Roaming\Balatro\Mods/balatrobot-1.4.1/src/lua/utils/openrpc.json
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.SERVER :: HTTP server listening on http://127.0.0.1:12346
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/health.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: health
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/gamestate.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: gamestate
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/save.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: save
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/load.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: load
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/screenshot.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: screenshot
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/set.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: set
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/add.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: add
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/menu.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: menu
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/start.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: start
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/skip.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: skip
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/select.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: select
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/play.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: play
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/discard.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: discard
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/cash_out.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: cash_out
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/next_round.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: next_round
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/reroll.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: reroll
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/buy.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: buy
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/pack.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: pack
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/rearrange.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: rearrange
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/sell.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: sell
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loading endpoint: src/lua/endpoints/use.lua
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Registered endpoint: use
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Loaded 21 endpoint(s)
+INFO - [G] 2026-05-19 21:36:16 :: DEBUG :: BB.DISPATCHER :: Dispatcher initialized successfully
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: BB.BALATROBOT :: BalatroBot loaded - version 1.4.0
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected Fonts in 0.003 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected DynaTextEffects in 0.002 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected Language in 0.001 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected [INTERNAL] in 1.601 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0002] Injected Atlas in 157.518 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0001] Injected Sound in 0.345 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0002] Injected nil in 0.048 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0008] Injected Stake in 0.475 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0004] Injected Rarity in 0.034 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0004] Injected ObjectType in 0.043 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0050] Injected Center in 0.399 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0007] Injected Undiscovered Sprite in 0.016 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0002] Injected Blind in 0.037 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0004] Injected Seal in 0.149 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0004] Injected Suit in 0.110 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0013] Injected Rank in 0.078 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0012] Injected DeckSkin in 0.113 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0017] Injected JimboQuip in 0.108 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0012] Injected PokerHand in 0.064 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0020] Injected Challenge in 0.032 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected Tag in 0.001 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0004] Injected Sticker in 0.101 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected Shader in 0.001 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0002] Injected Keybind in 0.016 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected Achievement in 0.054 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0002] Injected Scoring_Parameters in 0.165 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0003] Injected Scoring_Calculations in 0.014 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0021] Injected Draw Step in 0.194 ms
+INFO - [G] 2026-05-19 21:36:16 :: INFO  :: TIMER :: [0000] Injected [INTERNAL] in 0.280 ms
+INFO - [G] 2026-05-19 21:36:17 :: DEBUG :: BB.SERVER :: Client connected
+INFO - [G] 2026-05-19 21:36:17 :: DEBUG :: BB.REQUEST :: health()
+INFO - [G] 2026-05-19 21:36:17 :: DEBUG :: BB.ENDPOINTS :: Init health()
+INFO - [G] 2026-05-19 21:36:17 :: DEBUG :: BB.ENDPOINTS :: Return health()
+INFO - [G] 2026-05-19 21:36:17 :: DEBUG :: BB.RESPONSE :: health OK (0ms)
+INFO - [G] line not found
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] file not found: functions/misc_functions.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] 2026-05-19 21:36:46 :: ERROR :: StackTrace :: Oops! The game crashed
+functions/common_events.lua:2654: attempt to perform arithmetic on a nil value
+Stack Traceback
+===============
+(1) Lua local 'handler' at file 'main.lua:610'
+	Local variables:
+	 msg = string: "functions/common_events.lua:2654: attempt to perform arithmetic on a nil value"
+	 (*temporary) = Lua function '?' (defined at line 31 of chunk [SMODS _ "src/logging.lua"])
+	 (*temporary) = string: "Oops! The game crashed\
+"
+(2) LÖVE metamethod at file 'boot.lua:352'
+	Local variables:
+	 errhand = Lua function '?' (defined at line 596 of chunk main.lua)
+	 handler = Lua function '?' (defined at line 596 of chunk main.lua)
+(3) Lua global 'get_new_boss' at file 'functions/common_events.lua:2654'
+	Local variables:
+	 eligible_bosses = table: 0x1f4e9378  {}
+	 min_use = number: 100
+	 _ = nil
+	 boss = nil
+	 (*temporary) = table: 0x1f564410  {}
+	 (*temporary) = nil
+	 (*temporary) = table: 0x1f3cbc80  {}
+	 (*temporary) = nil
+	 (*temporary) = nil
+	 (*temporary) = Lua function '?' (defined at line 292 of chunk functions/misc_functions.lua)
+	 (*temporary) = number: 0.22927
+	 (*temporary) = string: "%.13f"
+	 (*temporary) = string: "attempt to perform arithmetic on a nil value"
+(4) Lua upvalue 'game_start_run' at file 'game.lua:2191'
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+	 args = table: 0x1eec20d8  {stake:1}
+	 saveTable = nil
+	 selected_back = table: 0x1f41f388  {order:1, _d:true, set:Back, stake:1, key:b_red, discovered:true, alerted:true, pos:table: 0x1f41f478, unlocked:true, _u:true, _discovered_unlocked_overwritten:true (more...)}
+	 (*temporary) = table: 0x1f0a9040  {Small:bl_small, Big:bl_big}
+(5) Lua upvalue 'orig_start_run' at Steamodded file 'src/utils.lua:2795' 
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+	 args = table: 0x1eec20d8  {stake:1}
+(6) Lua method 'start_run' at file 'rlSimplify.lua:207' (from mod with id BalatroRL)
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+(7) Lua field 'func' at file 'functions/button_callbacks.lua:2999'
+(8) Lua method 'handle' at file 'engine/event.lua:95'
+	Local variables:
+	 self = table: 0x1f5cc248  {start_timer:true, timer:REAL, func:function: 0x1f849ae8, blockable:true, trigger:immediate, created_on_pause:true, delay:0, complete:false, time:41.983333333332 (more...)}
+	 _results = table: 0x1f71bfb0  {blocking:true, pause_skip:false, time_done:false, completed:false}
+(9) Lua method 'update' at file 'engine/event.lua:183'
+	Local variables:
+	 self = table: 0x1f477ce0  {queues:table: 0x1f477d08, queue_last_processed:29.983333333333, append_count:0, append_queue:base, queue_dt:0.016666666666667, queue_timer:29.983333333333 (more...)}
+	 dt = number: 0.0166667
+	 forced = nil
+	 (for generator) = C function: next
+	 (for state) = table: 0x1f477d08  {unlock:table: 0x1f477df8, other:table: 0x1f477e98, tutorial:table: 0x1f477e48, base:table: 0x1f477e20, achievement:table: 0x1f477e70}
+	 (for control) = number: nan
+	 k = string: "base"
+	 v = table: 0x1f477e20  {1:table: 0x1f5cc248, 2:table: 0x1f7cb0e8, 3:table: 0x1f3536c8, 4:table: 0x1f3536f0, 5:table: 0x1f7cb110, 6:table: 0x1ef17310, 7:table: 0x1ef4b338 (more...)}
+	 blocked = boolean: false
+	 i = number: 1
+	 results = table: 0x1f71bfb0  {blocking:true, pause_skip:false, time_done:false, completed:false}
+(10) Lua upvalue 'gameUpdateRef' at file 'game.lua:2553'
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+	 dt = number: 0
+	 http_resp = nil
+(11) Lua upvalue 'orig_update' at Steamodded file 'src/ui.lua:124' 
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+	 dt = number: 0.0166667
+(12) Lua method 'update' at file 'rlSimplify.lua:129' (from mod with id BalatroRL)
+	Local variables:
+	 self = table: 0x1edb8030  {F_GUIDE:false, F_CRASH_REPORTS:false, F_QUIT_BUTTON:true, F_ENGLISH_ONLY:false, viewed_stake:1, sort_id:75, F_DISCORD:true, STAGE:2, F_MOBILE_UI:false (more...)}
+	 dt = number: 0.0166667
+(13) Lua upvalue 'love_update' at file 'main.lua:1005'
+	Local variables:
+	 dt = number: 0.0166667
+(14) Lua upvalue 'love_update' at file 'src/lua/settings.lua:73' (from mod with id balatrobot)
+	Local variables:
+	 _ = number: 0.016738
+(15) Lua field 'update' at file 'balatrobot.lua:77' (from mod with id balatrobot)
+	Local variables:
+	 dt = number: 0.016738
+(16) Lua function '?' at file 'main.lua:944' (best guess)
+(17) global C function 'xpcall'
+(18) LÖVE function at file 'boot.lua:377' (best guess)
+	Local variables:
+	 func = Lua function '?' (defined at line 915 of chunk main.lua)
+	 inerror = boolean: true
+	 deferErrhand = Lua function '(LÖVE Function)' (defined at line 348 of chunk [love "boot.lua"])
+	 earlyinit = Lua function '(LÖVE Function)' (defined at line 355 of chunk [love "boot.lua"])
+
+INFO - [G] file not found: functions/misc_functions.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] 2026-05-19 21:36:46 :: INFO  :: StackTrace :: Additional Context:
+Balatro Version: 1.0.1m-FULL
+Modded Version: 1.0.0~BETA-1221a-STEAMODDED
+LÖVE Version: 11.5.0
+Lovely Version: 0.9.0
+Platform: Windows
+Steamodded Mods:
+    1: BalatroBot by S1M0N38, stirby, phughesion, besteon, giewev [ID: balatrobot, Version: 1.4.0]
+    2: Balatro RL Simplifier by Group7 [ID: BalatroRL, Priority: -10, Version: 1.0.0]
+Lovely Mods:
