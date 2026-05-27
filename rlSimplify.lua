@@ -247,7 +247,7 @@ function Game:start_run(...)
 
             for _, card in pairs(G.deck.cards) do
                 if card.config and card.config.card then
-                    card:change_suit("Hearts")
+                    -- card:change_suit("Hearts")
                     strip_enhancement(card)
                     strip_seal(card)
                 end
@@ -275,31 +275,70 @@ if Blind then
     end
 
     local orig_set_blind = Blind.set_blind
-function Blind:set_blind(blind, reset, silent)
-    orig_set_blind(self, blind, reset, silent)
-
-    if G.GAME then
-        G.GAME.hand_size = 8
-        if G.hand then G.hand.config.card_limit = 8 end
-        if G.GAME.round_resets then
-            G.GAME.round_resets.discards = 4
-            G.GAME.round_resets.hands = 4
-        end
-
-        -- Reset boss blind chip requirement to standard 2x (remove Wall/extra multipliers)
-        if G.GAME.blind and self.boss then
-            local base = get_blind_amount(G.GAME.round_resets.ante)
-            if base then
-                local standard_chips = math.floor(base * 2)  -- boss is always 2x base
-                self.chips = standard_chips
-                G.GAME.blind.chips = standard_chips
-                if self.chip_text then
-                    self.chip_text = number_format(standard_chips)
-                end
-            end
+    function Blind:set_blind(blind, reset, silent)
+        orig_set_blind(self, blind, reset, silent)
+        
+        -- Neutralize The Needle's core definition values immediately 
+        if self.config and self.config.blind and self.config.blind.name == "The Needle" then
+            self.config.blind.hands = 4
         end
     end
 end
+
+-- Reinforce the hook inside your existing Game:update loop to fix your active state
+local orig_update = Game.update
+function Game:update(dt)
+    orig_update(self, dt)
+
+    enforce_shop()
+
+    -- Force all hand cards face up
+    if G.hand and G.hand.cards then
+        for _, card in ipairs(G.hand.cards) do
+            if card.facing and card.facing == "back" then
+                card:flip()
+            end
+        end
+    end
+
+    -- Force hand size to always be 8
+    if G.GAME and G.GAME.hand_size and G.GAME.hand_size ~= 8 then
+        G.GAME.hand_size = 8
+        if G.hand then G.hand.config.card_limit = 8 end
+    end
+
+    -- Force round_resets allocations to standard environment defaults
+    if G.GAME and G.GAME.round_resets then
+        G.GAME.round_resets.discards = 4
+        G.GAME.round_resets.hands = 4
+    end
+
+    ------------------------------------------------------------------
+    -- FIX ACTIVE ENVIRONMENT ENTRANCE (Fixes current broken game state)
+    ------------------------------------------------------------------
+    if G.GAME and G.GAME.current_round and G.STATE == G.STATES.SELECTING_HAND then
+        local cr = G.GAME.current_round
+        
+        -- If we are at the absolute beginning of a round and a boss altered standard constants
+        if cr.hands_played == 0 and cr.discards_used == 0 then
+            if cr.hands_left and cr.hands_left < 4 then
+                cr.hands_left = 4
+            end
+            if cr.discards_left and cr.discards_left < 4 then
+                cr.discards_left = 4
+            end
+        end
+    end
+
+    if G.STATE == G.STATES.BLIND_SELECT then
+        if G.GAME and G.GAME.tags then G.GAME.tags = {} end
+        if G.P_BLINDS then
+            for _, blind in pairs(G.P_BLINDS) do
+                blind.tag_effect = ""
+                blind.tag = nil
+            end
+        end
+    end
 end
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")
