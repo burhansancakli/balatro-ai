@@ -114,7 +114,7 @@ local function enforce_shop()
 end
 
 ------------------------------------------------------------------
--- HOOK GAME LOOP
+-- UNIFIED HOOK GAME LOOP
 ------------------------------------------------------------------
 local orig_update = Game.update
 function Game:update(dt)
@@ -122,7 +122,7 @@ function Game:update(dt)
 
     enforce_shop()
 
-    -- Force all hand cards face up (counters The Wheel, The House, etc)
+    -- Force all hand cards face up
     if G.hand and G.hand.cards then
         for _, card in ipairs(G.hand.cards) do
             if card.facing and card.facing == "back" then
@@ -131,43 +131,42 @@ function Game:update(dt)
         end
     end
 
-    -- Force hand size to always be 8
+    ------------------------------------------------------------------
+    -- INDEPENDENT HAND SIZE FORCING (Fixes permanent post-Manacle drops)
+    ------------------------------------------------------------------
     if G.GAME and G.GAME.hand_size and G.GAME.hand_size ~= 8 then
         G.GAME.hand_size = 8
-        if G.hand then
-            G.hand.config.card_limit = 8
-        end
+    end
+    
+    if G.hand and G.hand.config and G.hand.config.card_limit ~= 8 then
+        G.hand.config.card_limit = 8
     end
 
-    -- Force round_resets discards to always be 4
+    -- Force standard round allocations
     if G.GAME and G.GAME.round_resets then
         G.GAME.round_resets.discards = 4
         G.GAME.round_resets.hands = 4
     end
 
-    -- IMPORTANT:
-    -- Only restore discards when a NEW round starts at 0 because of boss effect.
-    -- Do NOT continuously reset after every discard.
-    if G.GAME
-    and G.GAME.current_round
-    and G.STATE == G.STATES.SELECTING_HAND then
+    ------------------------------------------------------------------
+    -- NATIVE BOSS DISABLE (Fixes The Serpent hardcoded draw limit)
+    ------------------------------------------------------------------
+    if G.GAME and G.GAME.blind then
+        G.GAME.blind.disabled = true
+    end
 
+    -- Mid-round environment reset/recovery
+    if G.GAME and G.GAME.current_round and G.STATE == G.STATES.SELECTING_HAND then
         local cr = G.GAME.current_round
 
-        if cr.hands_played == 0
-        and cr.discards_used == 0
-        and cr.discards_left == 0 then
-            cr.discards_left = 4
+        if cr.hands_played == 0 and cr.discards_used == 0 then
+            if cr.hands_left and cr.hands_left < 4 then cr.hands_left = 4 end
+            if cr.discards_left and cr.discards_left < 4 then cr.discards_left = 4 end
         end
     end
 
     if G.STATE == G.STATES.BLIND_SELECT then
-        if G.GAME then
-            if G.GAME.tags then
-                G.GAME.tags = {}
-            end
-        end
-
+        if G.GAME and G.GAME.tags then G.GAME.tags = {} end
         if G.P_BLINDS then
             for _, blind in pairs(G.P_BLINDS) do
                 blind.tag_effect = ""
@@ -262,7 +261,6 @@ end
 -- DISABLE ALL BOSS BLIND EFFECTS
 ------------------------------------------------------------------
 if Blind then
-
     function Blind:debuff_hand(cards, poker_hand, handname, check)
         return false
     end
@@ -278,65 +276,11 @@ if Blind then
     function Blind:set_blind(blind, reset, silent)
         orig_set_blind(self, blind, reset, silent)
         
-        -- Neutralize The Needle's core definition values immediately 
+        -- Force disable the blind instance natively upon activation
+        self.disabled = true
+
         if self.config and self.config.blind and self.config.blind.name == "The Needle" then
             self.config.blind.hands = 4
-        end
-    end
-end
-
--- Reinforce the hook inside your existing Game:update loop to fix your active state
-local orig_update = Game.update
-function Game:update(dt)
-    orig_update(self, dt)
-
-    enforce_shop()
-
-    -- Force all hand cards face up
-    if G.hand and G.hand.cards then
-        for _, card in ipairs(G.hand.cards) do
-            if card.facing and card.facing == "back" then
-                card:flip()
-            end
-        end
-    end
-
-    -- Force hand size to always be 8
-    if G.GAME and G.GAME.hand_size and G.GAME.hand_size ~= 8 then
-        G.GAME.hand_size = 8
-        if G.hand then G.hand.config.card_limit = 8 end
-    end
-
-    -- Force round_resets allocations to standard environment defaults
-    if G.GAME and G.GAME.round_resets then
-        G.GAME.round_resets.discards = 4
-        G.GAME.round_resets.hands = 4
-    end
-
-    ------------------------------------------------------------------
-    -- FIX ACTIVE ENVIRONMENT ENTRANCE (Fixes current broken game state)
-    ------------------------------------------------------------------
-    if G.GAME and G.GAME.current_round and G.STATE == G.STATES.SELECTING_HAND then
-        local cr = G.GAME.current_round
-        
-        -- If we are at the absolute beginning of a round and a boss altered standard constants
-        if cr.hands_played == 0 and cr.discards_used == 0 then
-            if cr.hands_left and cr.hands_left < 4 then
-                cr.hands_left = 4
-            end
-            if cr.discards_left and cr.discards_left < 4 then
-                cr.discards_left = 4
-            end
-        end
-    end
-
-    if G.STATE == G.STATES.BLIND_SELECT then
-        if G.GAME and G.GAME.tags then G.GAME.tags = {} end
-        if G.P_BLINDS then
-            for _, blind in pairs(G.P_BLINDS) do
-                blind.tag_effect = ""
-                blind.tag = nil
-            end
         end
     end
 end
