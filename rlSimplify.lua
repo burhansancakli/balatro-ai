@@ -247,7 +247,7 @@ function Game:start_run(...)
 
             for _, card in pairs(G.deck.cards) do
                 if card.config and card.config.card then
-                    -- card:change_suit("Hearts")
+                    card:change_suit("Hearts")
                     strip_enhancement(card)
                     strip_seal(card)
                 end
@@ -275,23 +275,31 @@ if Blind then
     end
 
     local orig_set_blind = Blind.set_blind
+function Blind:set_blind(blind, reset, silent)
+    orig_set_blind(self, blind, reset, silent)
 
-    function Blind:set_blind(blind, reset, silent)
-        orig_set_blind(self, blind, reset, silent)
+    if G.GAME then
+        G.GAME.hand_size = 8
+        if G.hand then G.hand.config.card_limit = 8 end
+        if G.GAME.round_resets then
+            G.GAME.round_resets.discards = 4
+            G.GAME.round_resets.hands = 4
+        end
 
-        if G.GAME then
-            G.GAME.hand_size = 8
-
-            if G.hand then
-                G.hand.config.card_limit = 8
-            end
-
-            if G.GAME.round_resets then
-                G.GAME.round_resets.discards = 4
-                G.GAME.round_resets.hands = 4
+        -- Reset boss blind chip requirement to standard 2x (remove Wall/extra multipliers)
+        if G.GAME.blind and self.boss then
+            local base = get_blind_amount(G.GAME.round_resets.ante)
+            if base then
+                local standard_chips = math.floor(base * 2)  -- boss is always 2x base
+                self.chips = standard_chips
+                G.GAME.blind.chips = standard_chips
+                if self.chip_text then
+                    self.chip_text = number_format(standard_chips)
+                end
             end
         end
     end
+end
 end
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")
