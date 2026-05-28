@@ -51,7 +51,20 @@ local function strip_seal(card)
 end
 
 ------------------------------------------------------------------
--- ENFORCE SHOP CONTENTS
+-- BIRTH-LEVEL ENGINE INTERCEPTION
+------------------------------------------------------------------
+local orig_create_card = create_card
+function create_card(set, area, rarity, legend, skip_materialize, soulable, forced_key, key_append)
+    if G and area == G.shop_jokers then
+        -- Force the item to register as a pure Joker layout from creation (created jokers to behave like tarots/planets lol)
+        set = "Joker"
+    end
+    -- NEVER return nil here; let enforce_shop handle safe removal to prevent engine crashes
+    return orig_create_card(set, area, rarity, legend, skip_materialize, soulable, forced_key, key_append)
+end
+
+------------------------------------------------------------------
+-- ENFORCE SHOP CONTENTS (Restored Original Features & Variables)
 ------------------------------------------------------------------
 local shop_filled = false
 local last_joker_count = 0
@@ -66,6 +79,13 @@ local function enforce_shop()
 
     if not G.shop_jokers or not G.shop_jokers.cards then return end
 
+    -- Native Size Forcing: Tells engine to expect 0 of these rows
+    if G.GAME and G.GAME.shop then
+        G.GAME.shop.booster_max = 0
+        G.GAME.shop.voucher_max = 0
+        G.GAME.shop.consumable_max = 0
+    end
+
     local current_joker_count = G.jokers and #G.jokers.cards or 0
     if current_joker_count ~= last_joker_count then
         last_joker_count = current_joker_count
@@ -77,6 +97,7 @@ local function enforce_shop()
         shop_enter_time = love.timer.getTime()
     end
 
+    -- Continuous safety cleanup loops
     for i = #G.shop_jokers.cards, 1, -1 do
         local card = G.shop_jokers.cards[i]
         if not is_allowed(card) then
@@ -108,6 +129,7 @@ local function enforce_shop()
         end
     end
 
+    -- Restored Original Timing Flags
     if shop_filled then return end
     if love.timer.getTime() - shop_enter_time < 0.5 then return end
     shop_filled = true
@@ -132,7 +154,7 @@ function Game:update(dt)
     end
 
     ------------------------------------------------------------------
-    -- INDEPENDENT HAND SIZE FORCING (Fixes permanent post-Manacle drops)
+    -- INDEPENDENT HAND SIZE FORCING
     ------------------------------------------------------------------
     if G.GAME and G.GAME.hand_size and G.GAME.hand_size ~= 8 then
         G.GAME.hand_size = 8
@@ -149,7 +171,7 @@ function Game:update(dt)
     end
 
     ------------------------------------------------------------------
-    -- NATIVE BOSS DISABLE (Fixes The Serpent hardcoded draw limit)
+    -- NATIVE BOSS DISABLE
     ------------------------------------------------------------------
     if G.GAME and G.GAME.blind then
         G.GAME.blind.disabled = true
@@ -180,16 +202,14 @@ end
 G.FUNCS.skip_blind = function(e) end
 
 ------------------------------------------------------------------
--- INTERCEPT SHOP CARD CREATION
+-- INTERCEPT SHOP CARD MORPHING
 ------------------------------------------------------------------
 local orig_create_card_for_shop = create_card_for_shop
-
 function create_card_for_shop(area, forced_tag)
     local card = orig_create_card_for_shop(area, nil)
 
-    if card and card.ability and card.ability.set == "Joker" then
+    if card and area == G.shop_jokers then
         local owned = {}
-
         if G.jokers and G.jokers.cards then
             for _, c in ipairs(G.jokers.cards) do
                 if c.config and c.config.center_key then
@@ -199,7 +219,6 @@ function create_card_for_shop(area, forced_tag)
         end
 
         local in_shop = {}
-
         if G.shop_jokers and G.shop_jokers.cards then
             for _, c in ipairs(G.shop_jokers.cards) do
                 if c.config and c.config.center_key then
@@ -209,11 +228,8 @@ function create_card_for_shop(area, forced_tag)
         end
 
         local available = {}
-
         for _, key in ipairs(ALLOWED_JOKER_LIST) do
-            if not owned[key]
-            and not in_shop[key]
-            and G.P_CENTERS[key] then
+            if not owned[key] and not in_shop[key] and G.P_CENTERS[key] then
                 table.insert(available, key)
             end
         end
@@ -221,7 +237,9 @@ function create_card_for_shop(area, forced_tag)
         if #available > 0 then
             local replace_key = available[math.random(#available)]
             card:set_ability(G.P_CENTERS[replace_key])
+            card.consumeable = nil
             strip_edition(card)
+            card:set_cost()
         end
     end
 
@@ -232,7 +250,6 @@ end
 -- HOOK START RUN
 ------------------------------------------------------------------
 local orig_start_run = Game.start_run
-
 function Game:start_run(...)
     orig_start_run(self, ...)
 
@@ -246,7 +263,6 @@ function Game:start_run(...)
 
             for _, card in pairs(G.deck.cards) do
                 if card.config and card.config.card then
-                    -- card:change_suit("Hearts")
                     strip_enhancement(card)
                     strip_seal(card)
                 end
@@ -276,28 +292,24 @@ if Blind then
     function Blind:set_blind(blind, reset, silent)
         orig_set_blind(self, blind, reset, silent)
         
-        -- Force disable the blind instance natively upon activation
         self.disabled = true
 
         if self.config and self.config.blind and self.config.blind.name == "The Needle" then
             self.config.blind.hands = 4
         end
 
-        -- Reset boss blind chip requirement to standard 2x (remove Wall)
         if G.GAME.blind and self.boss then
-                local base = get_blind_amount(G.GAME.round_resets.ante)
-                if base then
-                    local standard_chips = math.floor(base * 2)  -- boss is always 2x base
-                    self.chips = standard_chips
-                    G.GAME.blind.chips = standard_chips
-                    if self.chip_text then
-                        self.chip_text = number_format(standard_chips)
-                    end
+            local base = get_blind_amount(G.GAME.round_resets.ante)
+            if base then
+                local standard_chips = math.floor(base * 2)
+                self.chips = standard_chips
+                G.GAME.blind.chips = standard_chips
+                if self.chip_text then
+                    self.chip_text = number_format(standard_chips)
                 end
             end
+        end
     end
-
-    
 end
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")

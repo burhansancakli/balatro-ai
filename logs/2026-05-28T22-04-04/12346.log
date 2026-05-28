@@ -1,0 +1,143 @@
+INFO - [♥] Lovely 0.9.0
+INFO - [♥] Game directory is at "C:\\Games\\Balatro"
+INFO - [♥] Writing logs to "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\log"
+INFO - [♥] Using mod directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods"
+INFO - [♥] 'balatrobot-1.4.1' was found in blacklist, skipping it.
+INFO - [♥] 'balatrobot-1.4.1.zip' was found in blacklist, skipping it.
+INFO - [♥] Cleaning up dump directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\dump"
+INFO - [♥] Cleaning up game-dump directory at "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods\\lovely\\game-dump"
+INFO - [♥] Initialization complete in 39ms
+INFO - [♥] Applied 9 patches to 'main.lua'
+INFO - [♥] Applied 5 patches to 'engine/controller.lua'
+INFO - [♥] Applied 15 patches to 'back.lua'
+INFO - [♥] Applied 10 patches to 'tag.lua'
+INFO - [♥] Applied 5 patches to 'engine/event.lua'
+INFO - [♥] Applied 1 patch to 'engine/node.lua'
+INFO - [♥] Applied 2 patches to 'engine/moveable.lua'
+INFO - [♥] Applied 2 patches to 'engine/sprite.lua'
+INFO - [♥] Applied 4 patches to 'engine/animatedsprite.lua'
+INFO - [♥] Applied 78 patches to 'functions/misc_functions.lua'
+INFO - [♥] Applied 52 patches to 'game.lua'
+INFO - [♥] Applied 1 patch to 'globals.lua'
+INFO - [♥] Applied 7 patches to 'engine/ui.lua'
+WARN - [♥] Pattern '{card_limit = 5, type = \'play\'})\n' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\card_limit.toml resulted in no matches
+WARN - [♥] Pattern 'label = \"Production\",\nchosen = true,\n' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\deck_skins.toml resulted in no matches
+WARN - [♥] Pattern 'label = \"Collabs\",' on target 'functions/UI_definitions.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\deck_skins.toml resulted in no matches
+INFO - [♥] Applied 113 patches to 'functions/UI_definitions.lua'
+INFO - [♥] Applied 58 patches to 'functions/state_events.lua'
+INFO - [♥] Applied 127 patches to 'functions/common_events.lua'
+INFO - [♥] Applied 57 patches to 'functions/button_callbacks.lua'
+WARN - [♥] Pattern 'self.VT.h = self.T.H\nself.VT.w = self.T.w\n' on target 'card.lua' for pattern patch from smods-1.0.0-beta-1221a\lovely\joker_size.toml resulted in no matches
+INFO - [♥] Applied 222 patches to 'card.lua'
+INFO - [♥] Applied 19 patches to 'cardarea.lua'
+INFO - [♥] Applied 42 patches to 'blind.lua'
+INFO - [♥] Applied 10 patches to 'card_character.lua'
+INFO - [♥] Applied 15 patches to 'engine/text.lua'
+INFO - [G] Failed to connect to the debug server
+INFO - [G] 2026-05-28 22:04:10 :: DEBUG :: DebugConsole :: Steamodded Debug Socket started !
+INFO - [G] 2026-05-28 22:04:10 :: INFO  :: SMODS :: Steamodded v1.0.0~BETA-1221a
+INFO - [♥] Applied 9 patches to 'engine/sound_manager.lua'
+INFO - [♥] Applied 1 patch to 'engine/save_manager.lua'
+INFO - [G] 2026-05-28 22:04:11 :: INFO  :: Loader :: Valid JSON file found
+INFO - [G] 2026-05-28 22:04:11 :: TRACE :: Loader :: Processing Mod file (Legacy header): main.lua
+INFO - [G] 2026-05-28 22:04:11 :: WARN  :: Loader :: Mod file main.lua is missing required header component: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/balatrobot-1.4.1/.claude/settings.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/balatrobot-1.4.1/.mux/mcp.jsonc, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: INFO  :: Loader :: Valid JSON file found
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/back.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/blind.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/card.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/card_character.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/cardarea.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/game.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/globals.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/main.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/dump/tag.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/back.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/blind.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/card.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/card_character.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/cardarea.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/game.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/globals.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/main.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: Loader :: Found invalid metadata JSON file at C:\Users\Aagat\AppData\Roaming\Balatro\Mods/lovely/game-dump/tag.lua.json, ignoring: [SMODS _ "src/loader.lua"]:226: id
+INFO - [G] line not found
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] line not found
+INFO - [G] line not found
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] 2026-05-28 22:04:11 :: ERROR :: StackTrace :: Oops! The game crashed
+[SMODS BalatroRL "main.lua"]:8: Error processing file 'rlSimplify.lua' for mod with ID 'BalatroRL': [SMODS BalatroRL "rlSimplify.lua"]:259: 'end' expected (to close 'if' at line 213) near '<eof>'
+Stack Traceback
+===============
+(1) Lua local 'handler' at file 'main.lua:610'
+	Local variables:
+	 msg = string: "[SMODS BalatroRL \"main.lua\"]:8: Error processing file 'rlSimplify.lua' for mod with ID 'BalatroRL': [SMODS BalatroRL \"rlSimplify.lua\"]:259: 'end' expected (to close 'if' at line 213) near '<eof>'"
+	 (*temporary) = Lua function '?' (defined at line 31 of chunk [SMODS _ "src/logging.lua"])
+	 (*temporary) = string: "Oops! The game crashed\
+"
+(2) LÖVE function at file 'boot.lua:352' (best guess)
+	Local variables:
+	 errhand = Lua function '?' (defined at line 596 of chunk main.lua)
+	 handler = Lua function '?' (defined at line 596 of chunk main.lua)
+(3) global C function 'assert'
+(4) main chunk of file 'main.lua' at line 8 (from mod with id BalatroRL)
+(5) Lua global 'loadMods' at Steamodded file 'src/loader.lua:571' 
+	Local variables:
+	 modsDirectory = string: "C:\\Users\\Aagat\\AppData\\Roaming\\Balatro\\Mods"
+	 header_components = table: 0x2bdfb448  {version:table: 0x2bdec5e8, id:table: 0x2bd3b3d0, conflicts:table: 0x2be127f8, outdated:table: 0x2bddab00, prefix:table: 0x2be12820, dump_loc:table: 0x2be44dc0 (more...)}
+	 json_spec = table: 0x2bd387a8  {version:table: 0x2bde9e68, id:table: 0x2b9c9d98, main_file:table: 0x2b94c008, __:table: 0x2bca4a78, badge_colour:table: 0x2be756f8, badge_text_colour:table: 0x2bd768c8 (more...)}
+	 used_prefixes = table: 0x2bca5b48  {}
+	 lovely_directories = table: 0x2bca5b70  {}
+	 processDirectory = Lua function '?' (defined at line 185 of chunk [SMODS _ "src/loader.lua"])
+	 keyset = table: 0x2c0f4640  {1:-10, 2:0}
+	 check_dependencies = Lua function '?' (defined at line 419 of chunk [SMODS _ "src/loader.lua"])
+	 (for generator) = C function: builtin#6
+	 (for state) = table: 0x2c0f4640  {1:-10, 2:0}
+	 (for control) = number: 1
+	 _ = number: 1
+	 priority = number: -10
+	 (for generator) = C function: builtin#6
+	 (for state) = table: 0x2bdacb98  {1:table: 0x2bad6808}
+	 (for control) = number: 1
+	 _ = number: 1
+	 mod = table: 0x2bad6808  {version:1.0.0, id:BalatroRL, main_file:main.lua, can_load:true, badge_colour:table: 0x2be60a88, badge_text_colour:table: 0x2bd67940, priority:-10 (more...)}
+(6) Lua global 'initSteamodded' at Steamodded file 'src/loader.lua:657' 
+(7) Lua method 'start_up' at file 'game.lua:214'
+	Local variables:
+	 self = table: 0x2b828040  {SPEEDFACTOR:1, F_GUIDE:false, keybind_mapping:table: 0x2b8330d0, F_CRASH_REPORTS:false, P_CARDS:table: 0x2be80460, shared_undiscovered_joker:table: 0x2b9d3490 (more...)}
+	 settings = string: "return {[\"skip_splash\"]=\"Yes\",[\"version\"]=\"1.0.1m-FULL\",[\"reduced_motion\"]=true,[\"paused\"]=false,[\"QUEUED_CHANGE\"]={},[\"COMP\"]={[\"prev_name\"]=\"\",[\"name\"]=\"\",[\"score\"]=23557560,},[\"colourblind_option\"]=true,[\"play_button_pos\"]=2,[\"CUSTOM_DECK\"]={[\"Collabs\"]={[\"Spades\"]=\"default_Spades\",[\"Hearts\"]=\"collab_AU\",[\"Diamonds\"]=\"collab_SV\",[\"Clubs\"]=\"default_Clubs\",},},[\"colour_palettes\"]={[\"Spades\"]=\"hc\",[\"Hearts\"]=\"hc\",[\"Diamonds\"]=\"hc\",[\"Clubs\"]=\"hc\",},[\"crashreports\"]=false,[\"tutorial_progress\"]={[\"hold_parts\"]={[\"first_hand_3\"]=true,[\"small_blind\"]=true,[\"big_blind\"]=true,[\"first_hand_4\"]=true,[\"second_hand\"]=true,[\"shop_1\"]=true,[\"first_hand_2\"]=true,[\"first_hand\"]=true,},[\"section\"]=\"second_hand\",[\"completed_parts\"]={[\"first_hand\"]=true,[\"first_hand_3\"]=true,[\"small_blind\"]=true,[\"big_blind\"]=true,[\"first_hand_4\"]=true,[\"shop_1\"]=true,[\"first_hand_section\"]=true,[\"first_hand_2\"]=true,[\"second_hand\"]=true,},},[\"language\"]=\"en-us\",[\"profile\"]=2,[\"WINDOW\"]={[\"vsync\"]=0,[\"display_names\"]={[1]=\"1\",},[\"screenmode\"]=\"Borderless\",[\"DISPLAYS\"]={[1]={[\"screen_resolutions\"]={[\"strings\"]={[1]=\"1920 X 1080\",},[\"values\"]={[1]={[\"w\"]=1536,[\"h\"]=864,},},},[\"screen_res\"]={[\"w\"]=1536,[\"h\"]=864,},[\"DPI_scale\"]=1,[\"MONITOR_DIMS\"]={[\"height\"]=1080,[\"width\"]=1920,},},},[\"selected_display\"]=1,},[\"run_stake_stickers\"]=false,[\"GAMESPEED\"]=4,[\"SOUND\"]={[\"volume\"]=0,[\"music_volume\"]=0,[\"game_sounds_volume\"]=0,},[\"music_control\"]={[\"current_track\"]=\"\",[\"desired_track\"]=\"\",[\"lerp\"]=1,},[\"ACHIEVEMENTS_EARNED\"]={[\"mid_stakes\"]=true,[\"card_discarder\"]=true,[\"low_stakes\"]=true,[\"_10k\"]=true,[\"retrograde\"]=true,[\"card_player\"]=true,[\"_1000k\"]=true,[\"legendary\"]=true,[\"royale\"]=true,[\"heads_up\"]=true,[\"ante_upper\"]=true,[\"cartomancy\"]=true,[\"ante_up\"]=true,[\"you_get_what_you_get\"]=true,},[\"screenshake\"]=0,[\"current_setup\"]=\"New Run\",[\"tutorial_complete\"]=true,[\"ambient_control\"]={[\"ambientFire1\"]={[\"per\"]=1.1,[\"vol\"]=0,},[\"ambientOrgan1\"]={[\"per\"]=0.7,[\"vol\"]=0.00022875130245295,},[\"ambientFire2\"]={[\"per\"]=1.05,[\"vol\"]=0,},[\"ambientFire3\"]={[\"per\"]=1,[\"vol\"]=0.029910045609992,},},[\"DEMO\"]={[\"win_CTA_shown\"]=true,[\"quit_CTA_shown\"]=true,[\"timed_CTA_shown\"]=true,[\"total_uptime\"]=21.233333333333,},[\"GRAPHICS\"]={[\"texture_scaling\"]=1,[\"crt\"]=0,[\"shadows\"]=\"Off\",[\"bloom\"]=0,},}"
+	 settings_ver = nil
+	 new_colour_proto = table: 0x2b830990  {Spades:table: 0x2b830bf8, Hearts:table: 0x2b830aa8, Diamonds:table: 0x2b830b60, Clubs:table: 0x2b830cb0}
+	 sound_files = table: 0x2b912178  {1:ambientFire1.ogg, 2:ambientFire2.ogg, 3:ambientFire3.ogg, 4:ambientOrgan1.ogg, 5:button.ogg, 6:cancel.ogg, 7:card1.ogg, 8:card3.ogg, 9:cardFan2.ogg (more...)}
+	 shader_files = table: 0x2b986680  {1:CRT.fs, 2:background.fs, 3:booster.fs, 4:debuff.fs, 5:dissolve.fs, 6:flame.fs, 7:flash.fs, 8:foil.fs, 9:gold_seal.fs, 10:holo.fs, 11:hologram.fs (more...)}
+(8) Lua field 'load' at file 'main.lua:958'
+(9) Lua function '?' at file 'main.lua:905' (best guess)
+(10) global C function 'xpcall'
+(11) LÖVE function at file 'boot.lua:368' (best guess)
+	Local variables:
+	 result = boolean: true
+	 main = nil
+(12) global C function 'xpcall'
+(13) LÖVE function at file 'boot.lua:377' (best guess)
+	Local variables:
+	 func = Lua function '(LÖVE Function)' (defined at line 355 of chunk [love "boot.lua"])
+	 inerror = boolean: true
+	 deferErrhand = Lua function '(LÖVE Function)' (defined at line 348 of chunk [love "boot.lua"])
+	 earlyinit = Lua function '(LÖVE Function)' (defined at line 355 of chunk [love "boot.lua"])
+
+INFO - [G] line not found
+INFO - [G] line not found
+INFO - [G] file not found: main.lua: No such file or directory
+INFO - [G] 2026-05-28 22:04:11 :: INFO  :: StackTrace :: Additional Context:
+Balatro Version: 1.0.1m-FULL
+Modded Version: 1.0.0~BETA-1221a-STEAMODDED
+LÖVE Version: 11.5.0
+Lovely Version: 0.9.0
+Platform: Windows
+Steamodded Mods:
+    1: BalatroBot by S1M0N38, stirby, phughesion, besteon, giewev [ID: balatrobot, Version: 1.4.0]
+    2: Balatro RL Simplifier by Group7 [ID: BalatroRL, Priority: -10, Version: 1.0.0]
+Lovely Mods:
