@@ -282,7 +282,22 @@ if Blind then
         if self.config and self.config.blind and self.config.blind.name == "The Needle" then
             self.config.blind.hands = 4
         end
+
+        -- Reset boss blind chip requirement to standard 2x (remove Wall)
+        if G.GAME.blind and self.boss then
+                local base = get_blind_amount(G.GAME.round_resets.ante)
+                if base then
+                    local standard_chips = math.floor(base * 2)  -- boss is always 2x base
+                    self.chips = standard_chips
+                    G.GAME.blind.chips = standard_chips
+                    if self.chip_text then
+                        self.chip_text = number_format(standard_chips)
+                    end
+                end
+            end
     end
+
+    
 end
 
 sendInfoMessage("RL SIMPLIFY LOADED", "BB.RL")
