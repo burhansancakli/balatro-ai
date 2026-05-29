@@ -14,8 +14,16 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Tuple
 
-from strategy import Strategy, NUM_STRATEGIES, pick_best_play, parse_cards_from_gamestate, strategy_coherence_reward
+from strategy import (
+    Strategy,
+    NUM_STRATEGIES,
+    pick_best_play,
+    parse_cards_from_gamestate,
+    parse_jokers_from_gamestate,
+    strategy_coherence_reward,
+)
 from observations import gamestate_to_observation, OBS_SIZE
+from jokers import JOKERS_BY_STRATEGY
 
 
 # ─────────────────────────────────────────────────────────────
@@ -31,6 +39,10 @@ RPC_RETRIES     = 3        # retry count on timeout
 RPC_RETRY_WAIT  = 0.5     # seconds between retries
 POLL_INTERVAL   = 0.02      # seconds between state polls
 POLL_TIMEOUT    = 30.0     # max seconds to wait for a state transition
+
+SURVIVAL_REWARD       = 0.05
+PROGRESS_REWARD_SCALE = 0.02
+CASH_OUT_SETTLE_WAIT  = 0.05
 
 
 # ─────────────────────────────────────────────────────────────
@@ -180,6 +192,7 @@ class BalatroEnv(gym.Env):
         self._steps: int         = 0
         self._episode_reward: float = 0.0
         self._last_gamestate: Optional[dict] = None
+        self._jokers_bought_episode: int = 0
 
     # ─── Gymnasium interface ───────────────────────────────────
 
@@ -211,10 +224,13 @@ class BalatroEnv(gym.Env):
         self._steps            = 0
         self._episode_reward   = 0.0
         self._last_gamestate   = state
+        self._jokers_bought_episode = 0
 
         return gamestate_to_observation(state), {
             "state": state.get("state"),
             "ante": self._current_ante,
+            "ante_reached": self._current_ante,
+            "jokers_bought": self._jokers_bought_episode,
         }
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
@@ -236,8 +252,10 @@ class BalatroEnv(gym.Env):
         info = {
             "strategy":       strategy.name,
             "ante":           gamestate.get("ante_num", 0),
+            "ante_reached":   gamestate.get("ante_num", 0),
             "round":          gamestate.get("round_num", 0),
             "won":            gamestate.get("won", False),
+            "jokers_bought":  self._jokers_bought_episode,
             "episode_reward": self._episode_reward,
             "hand_logs":      hand_logs,
         }
@@ -286,7 +304,7 @@ class BalatroEnv(gym.Env):
             # ── Cash out after round ────────────────────────────
             elif current == "ROUND_EVAL":
                 # Poll briefly to let animations settle, then cash out
-                time.sleep(0.2)
+                time.sleep(CASH_OUT_SETTLE_WAIT)
                 try:
                     state = self.client.call("cash_out")
                 except Exception:
@@ -294,6 +312,8 @@ class BalatroEnv(gym.Env):
                     state = self.client.poll_until([
                         "SHOP", "BLIND_SELECT", "GAME_OVER", "SELECTING_HAND"
                     ])
+                if state.get("state") != "GAME_OVER":
+                    total_reward += SURVIVAL_REWARD
 
             # ── Shop — ante complete ────────────────────────────
             elif current == "SHOP":
@@ -324,6 +344,7 @@ class BalatroEnv(gym.Env):
     def _play_hand(self, state: dict, strategy: Strategy) -> Tuple[dict, float, str]:
         """Use calculator to pick and play the best hand."""
         hand_cards = parse_cards_from_gamestate(state)
+        joker_labels = parse_jokers_from_gamestate(state)
 
         if not hand_cards:
             try:
@@ -349,12 +370,25 @@ class BalatroEnv(gym.Env):
             ])
 
         coherence = strategy_coherence_reward(hand_type, strategy)
-        reward    = coherence * 0.1
+        reward    = coherence * 0.1 + self._progress_reward(new_state)
 
         return new_state, reward, hand_summary
 
     def _handle_shop(self, state: dict, strategy: Strategy) -> dict:
-        """Skip shop and go to next round."""
+        """Buy one affordable strategy-matching shop joker, then leave shop."""
+        if self._has_joker_slot(state):
+            choice = self._choose_shop_joker(state, strategy)
+            if choice is not None:
+                try:
+                    state = self.client.call("buy", {"card": choice})
+                    self._jokers_bought_episode += 1
+                except Exception:
+                    # Buying is opportunistic; a stale shop state should not stop the run.
+                    try:
+                        state = self.client.call("gamestate")
+                    except Exception:
+                        pass
+
         try:
             state = self.client.call("next_round")
         except Exception:
@@ -362,6 +396,75 @@ class BalatroEnv(gym.Env):
                 "BLIND_SELECT", "SELECTING_HAND", "GAME_OVER"
             ])
         return state
+
+    def _choose_shop_joker(self, state: dict, strategy: Strategy) -> Optional[int]:
+        """Return the shop card index for the best affordable joker, if any."""
+        strategy_jokers = JOKERS_BY_STRATEGY.get(strategy.name, [])
+        strategy_rank = {name: rank for rank, name in enumerate(strategy_jokers)}
+        money = int(state.get("money", 0) or 0)
+
+        shop = state.get("shop", {}) or {}
+        shop_cards = shop.get("cards", []) or []
+        candidates = []
+
+        for index, card in enumerate(shop_cards):
+            label = card.get("label", "")
+            key = card.get("key", "")
+            card_set = card.get("set", "")
+
+            if label not in strategy_rank:
+                continue
+            if card_set != "JOKER" and not str(key).startswith("j_"):
+                continue
+
+            cost = self._buy_cost(card)
+            if cost > money:
+                continue
+
+            candidates.append((cost, -strategy_rank[label], index))
+
+        if not candidates:
+            return None
+
+        # Higher cost is a simple rarity/impact proxy; registry order breaks ties.
+        return max(candidates)[2]
+
+    def _has_joker_slot(self, state: dict) -> bool:
+        """Check whether buying another joker can fit in the joker area."""
+        jokers = state.get("jokers", {}) or {}
+        cards = jokers.get("cards", []) or []
+        limit = int(jokers.get("limit", 5) or 5)
+        return len(cards) < limit
+
+    def _buy_cost(self, card: dict) -> int:
+        """Read the Balatrobot card cost.buy field with safe fallbacks."""
+        cost = card.get("cost", {}) or {}
+        try:
+            return int(cost.get("buy", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _progress_reward(self, state: dict) -> float:
+        """Reward partial blind progress to reduce sparse early feedback."""
+        target = self._blind_target(state)
+        if target <= 0:
+            return 0.0
+
+        round_info = state.get("round", {}) or {}
+        chips = float(round_info.get("chips", 0) or 0)
+        progress = min(max(chips / target, 0.0), 1.0)
+        return progress * PROGRESS_REWARD_SCALE
+
+    def _blind_target(self, state: dict) -> float:
+        """Return the active blind score target from the Balatrobot state."""
+        blinds = state.get("blinds", {}) or {}
+        for status in ["CURRENT", "SELECT"]:
+            for blind_type in ["small", "big", "boss"]:
+                blind = blinds.get(blind_type, {}) or {}
+                if blind.get("status") == status:
+                    return float(blind.get("score", 0) or 0)
+        small = blinds.get("small", {}) or {}
+        return float(small.get("score", 0) or 0)
 
     def _outcome_reward(self, state: dict) -> float:
         """

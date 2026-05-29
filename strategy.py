@@ -17,7 +17,6 @@ Strategies:
 from enum import IntEnum
 from itertools import combinations
 from typing import List, Tuple, Optional
-import numpy as np
 
 
 # ─────────────────────────────────────────────────────────────
@@ -39,7 +38,7 @@ NUM_STRATEGIES = len(Strategy)
 
 
 # ─────────────────────────────────────────────────────────────
-# BALATRO HAND SCORING (simplified, no joker effects)
+# BALATRO HAND SCORING (simplified, with whitelisted joker effects)
 # Base: Chips x Mult as per vanilla Balatro level-1 hands
 # ─────────────────────────────────────────────────────────────
 
@@ -71,12 +70,8 @@ def _card_chip_value(rank: str) -> int:
     return RANK_VALUES.get(rank, 0)
 
 
-def _evaluate_5card_hand(cards: List[dict]) -> Tuple[str, int]:
-    """
-    Classify a 5-card hand and return (hand_type, base_score).
-    cards: list of dicts with keys 'rank' and 'suit'.
-    base_score = chips * mult + sum of scoring card chip values.
-    """
+def _classify_hand(cards: List[dict]) -> Tuple[str, dict]:
+    """Classify a played hand and return hand type plus metadata."""
     ranks = [c["rank"] for c in cards]
     suits = [c["suit"] for c in cards]
     rank_vals = sorted([RANK_VALUES.get(r, 0) for r in ranks], reverse=True)
@@ -86,25 +81,25 @@ def _evaluate_5card_hand(cards: List[dict]) -> Tuple[str, int]:
         rank_counts[r] = rank_counts.get(r, 0) + 1
     counts = sorted(rank_counts.values(), reverse=True)
 
-    is_flush    = len(set(suits)) == 1
-    is_straight = (len(set(rank_vals)) == 5 and
+    is_flush    = len(cards) == 5 and len(set(suits)) == 1
+    is_straight = (len(cards) == 5 and len(set(rank_vals)) == 5 and
                    max(rank_vals) - min(rank_vals) == 4)
     # Ace-low straight
-    if set(rank_vals) == {14, 2, 3, 4, 5}:
+    if len(cards) == 5 and set(rank_vals) == {14, 2, 3, 4, 5}:
         is_straight = True
 
     # Determine hand type
-    if is_flush and counts == [5]:
+    if len(cards) == 5 and is_flush and counts == [5]:
         hand_type = "flush_five"
-    elif is_flush and counts == [3, 2]:
+    elif len(cards) == 5 and is_flush and counts == [3, 2]:
         hand_type = "flush_house"
-    elif counts == [5]:
+    elif len(cards) == 5 and counts == [5]:
         hand_type = "five_of_a_kind"
     elif is_flush and is_straight:
         hand_type = "straight_flush"
-    elif counts == [4, 1]:
+    elif len(cards) >= 4 and counts[0] == 4:
         hand_type = "four_of_a_kind"
-    elif counts == [3, 2]:
+    elif len(cards) == 5 and counts == [3, 2]:
         hand_type = "full_house"
     elif is_flush:
         hand_type = "flush"
@@ -119,12 +114,81 @@ def _evaluate_5card_hand(cards: List[dict]) -> Tuple[str, int]:
     else:
         hand_type = "high_card"
 
-    chips, mult = HAND_SCORES[hand_type]
-    # Add chip values of scoring cards (simplified: all cards score)
-    card_chips = sum(_card_chip_value(r) for r in ranks)
-    base_score = (chips + card_chips) * mult
+    metadata = {
+        "is_flush": is_flush,
+        "rank_counts": rank_counts,
+    }
+    return hand_type, metadata
 
-    return hand_type, base_score
+
+def _score_hand(cards: List[dict], joker_labels: Optional[List[str]] = None) -> Tuple[str, int]:
+    """
+    Score a played hand using simplified Balatro Chips x Mult arithmetic.
+
+    The 13 whitelisted joker effects are modeled deterministically. This keeps
+    the low-level executor non-RL while allowing shop purchases to influence
+    card choice.
+    """
+    hand_type, metadata = _classify_hand(cards)
+    chips, mult = HAND_SCORES[hand_type]
+    chips += sum(_card_chip_value(c.get("rank", "")) for c in cards)
+
+    for label in joker_labels or []:
+        chips, mult = _apply_joker(label, cards, hand_type, metadata, chips, mult, joker_labels or [])
+
+    return hand_type, chips * mult
+
+
+def _evaluate_5card_hand(cards: List[dict]) -> Tuple[str, int]:
+    """Backward-compatible helper for tests and debugging."""
+    return _score_hand(cards, [])
+
+
+def _apply_joker(
+    label: str,
+    cards: List[dict],
+    hand_type: str,
+    metadata: dict,
+    chips: int,
+    mult: int,
+    joker_labels: List[str],
+) -> Tuple[int, int]:
+    """Apply one whitelisted joker effect to the current Chips/Mult totals."""
+    rank_counts = metadata["rank_counts"]
+    pair_count = sum(1 for count in rank_counts.values() if count >= 2)
+    has_pair = any(count >= 2 for count in rank_counts.values())
+    has_three = any(count >= 3 for count in rank_counts.values())
+    has_two_pair = pair_count >= 2
+    has_flush = metadata["is_flush"]
+
+    if label == "Droll Joker" and has_flush:
+        mult += 10
+    elif label == "Crafty Joker" and has_flush:
+        chips += 80
+    elif label == "Lusty Joker":
+        mult += 3 * sum(1 for card in cards if card.get("suit") == "H")
+    elif label == "Greedy Joker":
+        mult += 3 * sum(1 for card in cards if card.get("suit") == "D")
+    elif label == "Jolly Joker" and has_pair:
+        mult += 8
+    elif label == "Zany Joker" and has_three:
+        mult += 12
+    elif label == "Mad Joker" and has_two_pair:
+        mult += 10
+    elif label == "Sly Joker" and has_pair:
+        chips += 50
+    elif label == "Wily Joker" and has_three:
+        chips += 100
+    elif label == "Joker":
+        mult += 4
+    elif label == "Abstract Joker":
+        mult += 3 * len(joker_labels)
+    elif label == "Half Joker" and len(cards) <= 3:
+        mult += 20
+    elif label == "Scary Face":
+        chips += 30 * sum(1 for card in cards if card.get("rank") in {"J", "Q", "K"})
+
+    return chips, mult
 
 
 # Strategy-specific hand type preferences
@@ -155,6 +219,7 @@ def pick_best_play(
     hand_cards: List[dict],
     strategy: Strategy,
     n_play: int = 5,
+    joker_labels: Optional[List[str]] = None,
 ) -> Tuple[List[int], str, int]:
     """
     Given a list of card dicts and a strategy, return the best play.
@@ -164,6 +229,7 @@ def pick_best_play(
                     Each dict has keys: rank (str), suit (str).
         strategy:   Strategy enum value from high-level agent.
         n_play:     number of cards to play (default 5).
+        joker_labels: owned joker display names from the gamestate.
 
     Returns:
         (card_indices, hand_type, estimated_score)
@@ -173,28 +239,34 @@ def pick_best_play(
     if n == 0:
         return [], "high_card", 0
 
-    n_play = min(n_play, n)
-    best_indices  = list(range(n_play))
+    joker_labels = joker_labels or []
+    max_play = min(n_play, n)
+    play_sizes = [max_play]
+    if "Half Joker" in joker_labels:
+        play_sizes = list(range(1, max_play + 1))
+
+    best_indices  = list(range(max_play))
     best_score    = -1
     best_hand     = "high_card"
     prefs         = STRATEGY_PREFERRED_HANDS[strategy]
 
-    for combo in combinations(range(n), n_play):
-        cards = [hand_cards[i] for i in combo]
-        hand_type, base_score = _evaluate_5card_hand(cards)
-        preference = prefs.get(hand_type, 1)
+    for size in play_sizes:
+        for combo in combinations(range(n), size):
+            cards = [hand_cards[i] for i in combo]
+            hand_type, base_score = _score_hand(cards, joker_labels)
+            preference = prefs.get(hand_type, 1)
 
-        if strategy == Strategy.MULT_BUILD:
-            # Pure score maximizer
-            weighted_score = base_score
-        else:
-            # Blend: heavily weight strategy preference, lightly weight score
-            weighted_score = preference * 10000 + base_score
+            if strategy == Strategy.MULT_BUILD:
+                # Pure score maximizer
+                weighted_score = base_score
+            else:
+                # Blend: heavily weight strategy preference, lightly weight score
+                weighted_score = preference * 10000 + base_score
 
-        if weighted_score > best_score:
-            best_score   = weighted_score
-            best_indices = list(combo)
-            best_hand    = hand_type
+            if weighted_score > best_score:
+                best_score   = weighted_score
+                best_indices = list(combo)
+                best_hand    = hand_type
 
     return best_indices, best_hand, best_score
 
@@ -211,6 +283,18 @@ def parse_cards_from_gamestate(gamestate: dict) -> List[dict]:
         if rank and suit:
             cards.append({"rank": rank, "suit": suit})
     return cards
+
+
+def parse_jokers_from_gamestate(gamestate: dict) -> List[str]:
+    """Extract owned joker display names from raw gamestate."""
+    jokers = gamestate.get("jokers", {}) or {}
+    raw_cards = jokers.get("cards", []) or []
+    labels = []
+    for card in raw_cards:
+        label = card.get("label", "")
+        if label:
+            labels.append(label)
+    return labels
 
 
 def strategy_coherence_reward(

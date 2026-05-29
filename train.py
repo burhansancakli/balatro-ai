@@ -43,6 +43,7 @@ from env import BalatroEnv, DECK, STAKE
 # PORTS  = [12346, 12347, 12348, 12349]
 PORTS = random.sample(range(10000, 65535), 4)
 SEEDS  = ["TRAIN01", "TRAIN02", "TRAIN03", "TRAIN04"]
+BALATROBOT_VERSION = "1.4.1"
 
 SAVE_DIR = Path.cwd() / "balatro_saves"
 MODEL_DIR       = "./models"
@@ -62,6 +63,7 @@ BALATROBOT_FLAGS = [
     "--no-shaders",
     "--fps-cap", "1000",
     "--gamespeed", "4",
+    "--animation-fps", "1000",
 ]
 
 HEALTH_TIMEOUT   = 30   # seconds to wait for instance to become healthy
@@ -96,7 +98,7 @@ class BalatrobotManager:
         if port in self.processes:
             self.kill_instance(port)
 
-        cmd = ["uvx", "balatrobot", "serve", "--port", str(port)] + BALATROBOT_FLAGS
+        cmd = ["uvx", f"balatrobot=={BALATROBOT_VERSION}", "serve", "--port", str(port)] + BALATROBOT_FLAGS
         print(f"  [port {port}] Starting: {' '.join(cmd)}")
 
         try:
@@ -249,6 +251,8 @@ def make_env(port: int, seed: str, rank: int):
 # ─────────────────────────────────────────────────────────────
 
 class StrategyLogCallback(BaseCallback):
+    """Log high-level strategy selection frequencies to TensorBoard."""
+
     def __init__(self, verbose=0):
         super().__init__(verbose)
         self.strategy_counts = [0, 0, 0]
@@ -265,6 +269,20 @@ class StrategyLogCallback(BaseCallback):
             self.logger.record("strategy/pair_pct",   100 * self.strategy_counts[1] / total)
             self.logger.record("strategy/mult_pct",   100 * self.strategy_counts[2] / total)
 
+        return True
+
+
+class ResearchCallback(BaseCallback):
+    """Log research metrics emitted by BalatroEnv info dicts."""
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            if "ante_reached" in info:
+                self.logger.record("research/ante_reached", info["ante_reached"])
+            if "jokers_bought" in info:
+                self.logger.record("research/jokers_bought", info["jokers_bought"])
+            if "won" in info:
+                self.logger.record("research/win_rate", float(info["won"]))
         return True
 
 
@@ -319,7 +337,7 @@ def train(manager: BalatrobotManager):
             render               = False,
         ),
         StrategyLogCallback(),
-        GameStatusCallback(),
+        ResearchCallback(),
     ]
 
     print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
@@ -329,7 +347,8 @@ def train(manager: BalatrobotManager):
     model.learn(
         total_timesteps = TOTAL_STEPS,
         callback        = callbacks,
-        progress_bar    = False,
+        log_interval    = 1,
+        progress_bar    = True,
     )
 
     elapsed = time.time() - t_start
