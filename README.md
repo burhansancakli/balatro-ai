@@ -62,7 +62,7 @@ balatro_rl/
 
 ```bash
 # 1. Install dependencies
-pip install stable-baselines3 gymnasium requests numpy
+pip install -r requirements.txt
 
 # 2. Start 4 Balatrobot instances (separate terminals)
 
@@ -83,7 +83,7 @@ uvx balatrobot serve --headless --fast --no-shaders --fps-cap 1000 --gamespeed 4
 python train.py --setup-only
 
 # 4. Train
-python train.py
+python train.py --headless
 
 # 5. Monitor
 tensorboard --logdir ./logs
