@@ -7,7 +7,7 @@ Imports joker definitions from jokers.py — do not hardcode jokers here.
 Observation layout:
   [0]     ante_num            normalized 0-1  (max ante = 8)
   [1]     round_num           normalized 0-1  (max round = 3)
-  [2]     money               normalized 0-1  (clipped at $100)
+  [2]     money               normalized 0-1  (clipped at $100). # Because saving more money doesn't serve any purpose.
   [3]     blind_target        normalized 0-1  (clipped at 100_000)
   [4]     chips_so_far        normalized 0-1  (clipped at 100_000)
   [5]     progress_ratio      chips / blind_target  (0-1)

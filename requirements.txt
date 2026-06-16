@@ -4,3 +4,5 @@ requests
 numpy
 tensorboard
 pytest
+tqdm
+stable-baselines3[extra]
