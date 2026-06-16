@@ -21,7 +21,7 @@ import subprocess
 import requests
 import signal
 import atexit
-
+from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
@@ -295,7 +295,7 @@ def train(manager: BalatrobotManager):
     os.makedirs(LOG_DIR,   exist_ok=True)
 
     print(f"\nBuilding {len(PORTS)} parallel environments...")
-    env_fns = [
+    env_fns: Any = [
         make_env(port, seed, rank)
         for rank, (port, seed) in enumerate(zip(PORTS, SEEDS))
     ]
