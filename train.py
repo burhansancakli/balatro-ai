@@ -338,6 +338,7 @@ def train(manager: BalatrobotManager):
         ),
         StrategyLogCallback(),
         ResearchCallback(),
+        GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
     ]
 
     print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
@@ -348,7 +349,7 @@ def train(manager: BalatrobotManager):
         total_timesteps = TOTAL_STEPS,
         callback        = callbacks,
         log_interval    = 1,
-        progress_bar    = True,
+        progress_bar    = False,
     )
 
     elapsed = time.time() - t_start

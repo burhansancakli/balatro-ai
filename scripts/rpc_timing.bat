@@ -5,4 +5,4 @@ if not exist "%PYTHON%" (
   echo Python venv not found at %PYTHON%
   exit /b 1
 )
-"%PYTHON%" "%~dp0..\rpc_timing.py" %*
+"%PYTHON%" "%~dp0..\tests_live\rpc_timing.py" %*
