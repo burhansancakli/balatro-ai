@@ -111,10 +111,10 @@ class BalatrobotManager:
             self.processes[port] = proc
             return True
         except FileNotFoundError:
-            print(f"  [port {port}] ❌ 'uvx' not found. Is Balatrobot installed?")
+            print(f"  [port {port}]  'uvx' not found. Is Balatrobot installed?")
             return False
         except Exception as e:
-            print(f"  [port {port}] ❌ Failed to start: {e}")
+            print(f"  [port {port}]  Failed to start: {e}")
             return False
 
     def wait_healthy(self, port: int) -> bool:
@@ -129,14 +129,14 @@ class BalatrobotManager:
                     "jsonrpc": "2.0", "method": "health", "params": {}, "id": 1
                 }, timeout=3)
                 if r.json().get("result", {}).get("status") == "ok":
-                    print(" ✅")
+                    print("Successful")
                     return True
             except Exception:
                 pass
             print(".", end="", flush=True)
             time.sleep(HEALTH_INTERVAL)
 
-        print(f" ❌ timeout after {HEALTH_TIMEOUT}s")
+        print(f"  timeout after {HEALTH_TIMEOUT}s")
         return False
 
     def start_all(self) -> bool:
@@ -224,10 +224,10 @@ def create_save_files(ports: list, seeds: list):
                 "id": 1
             }, timeout=10)
 
-            print(f"  ✅ Saved to {save_path}")
+            print(f"  Saved to {save_path}")
 
         except Exception as e:
-            print(f"  ❌ Failed: {e}")
+            print(f"   Failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -276,13 +276,13 @@ class ResearchCallback(BaseCallback):
     """Log research metrics emitted by BalatroEnv info dicts."""
 
     def _on_step(self) -> bool:
-        for info in self.locals.get("infos", []):
-            if "ante_reached" in info:
-                self.logger.record("research/ante_reached", info["ante_reached"])
-            if "jokers_bought" in info:
-                self.logger.record("research/jokers_bought", info["jokers_bought"])
-            if "won" in info:
-                self.logger.record("research/win_rate", float(info["won"]))
+        #for info in self.locals.get("infos", []):
+        #    if "ante_reached" in info:
+        #        self.logger.record("research/ante_reached", info["ante_reached"])  # ante reached information is wrong. it doesnt show the latest ante that we have reached, only the ante that the latest iteration that has reached.  I'm not sure whether other data reported here are also wrong.
+        #    if "jokers_bought" in info:
+        #        self.logger.record("research/jokers_bought", info["jokers_bought"])
+        #    if "won" in info:
+        #        self.logger.record("research/win_rate", float(info["won"]))
         return True
 
 
@@ -301,7 +301,7 @@ def train(manager: BalatrobotManager):
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
-    print(f"✅ Environments ready")
+    print(f" Environments ready")
 
     eval_env = SubprocVecEnv([make_env(PORTS[0], SEEDS[0], 99)])
     eval_env = VecMonitor(eval_env)
@@ -328,14 +328,14 @@ def train(manager: BalatrobotManager):
             save_path   = MODEL_DIR,
             name_prefix = "balatro_ppo",
         ),
-        EvalCallback(
-            eval_env,
-            eval_freq            = EVAL_FREQ // len(PORTS),
-            best_model_save_path = os.path.join(MODEL_DIR, "best"),
-            log_path             = LOG_DIR,
-            deterministic        = True,
-            render               = False,
-        ),
+        #EvalCallback(
+        #    eval_env,
+        #    eval_freq            = EVAL_FREQ // len(PORTS),
+        #    best_model_save_path = os.path.join(MODEL_DIR, "best"),
+        #    log_path             = LOG_DIR,
+        #    deterministic        = True,
+        #    render               = False,
+        #),
         StrategyLogCallback(),
         ResearchCallback(),
         GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
@@ -381,10 +381,10 @@ if __name__ == "__main__":
     if not args.no_launch:
         ok = manager.start_all()
         if not ok:
-            print("\n❌ Not all instances healthy. Check Balatrobot installation.")
+            print("\n Not all instances healthy. Check Balatrobot installation.")
             manager.kill_all()
             exit(1)
-        print(f"\n✅ All {len(PORTS)} instances running\n")
+        print(f"\n All {len(PORTS)} instances running\n")
         time.sleep(3)   # give games time to fully initialize
 
     # Create save files

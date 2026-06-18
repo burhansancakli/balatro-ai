@@ -99,7 +99,7 @@ def check_health():
         print(f"  Time    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         return True
     except Exception as e:
-        print(f"  ❌ Health check failed: {e}")
+        print(f"   Health check failed: {e}")
         print(f"  Make sure Balatrobot is running on {URL}")
         return False
 

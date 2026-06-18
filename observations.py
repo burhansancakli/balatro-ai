@@ -50,6 +50,7 @@ MAX_JOKER_SLOTS = 5
 
 # Computed automatically — import this in env.py
 OBS_SIZE = 9 + (8 * 2) + (MAX_JOKER_SLOTS * 2)  # = 35 for 5 joker slots
+# ante, round, money, blind_target, chips, progress, hands_left, discards_left, hand_count. + 8 cards with rank and suit. + 5 jokers with idx and active.
 
 
 # ─────────────────────────────────────────────────────────────
