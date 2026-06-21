@@ -87,7 +87,10 @@ def main() -> None:
     )
 
     print(f"Training for {args.total_timesteps} timesteps...")
-    model.learn(total_timesteps=args.total_timesteps, callback=BalatroMetricsCallback())
+    try:
+        model.learn(total_timesteps=args.total_timesteps, callback=BalatroMetricsCallback())
+    except KeyboardInterrupt:
+        print("\nTraining interrupted — saving current model...")
 
     save_path = log_path / "balatro_ppo"
     model.save(str(save_path))

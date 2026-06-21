@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Jackdaw Visualization — Project Guide</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #1a1a1a;
+    background: #fff;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 40px 80px;
+  }
+
+  /* Print button */
+  .print-btn {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    background: #1a1a1a;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    z-index: 100;
+  }
+  .print-btn:hover { background: #333; }
+  @media print { .print-btn { display: none; } }
+
+  /* Cover */
+  .cover {
+    border-left: 4px solid #0a2818;
+    padding: 32px 0 32px 32px;
+    margin-bottom: 56px;
+  }
+  .cover-tag {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #666;
+    margin-bottom: 12px;
+  }
+  .cover h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: #0a2818;
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+  .cover-sub {
+    font-size: 17px;
+    color: #444;
+    margin-bottom: 24px;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    color: #888;
+  }
+  .cover-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* TOC */
+  .toc {
+    background: #f8f8f6;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 56px;
+  }
+  .toc h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-bottom: 16px; font-weight: 600; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: #0a2818; text-decoration: none; font-size: 14px; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* Sections */
+  h2.section-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0a2818;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e8f0eb;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 28px 0 10px;
+  }
+  p { margin-bottom: 14px; color: #333; }
+  section { margin-bottom: 56px; }
+
+  /* Code */
+  code {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    background: #f0f0ec;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #c0392b;
+  }
+  pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 20px 24px;
+    border-radius: 10px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 16px 0 20px;
+  }
+  pre .comment { color: #6a9955; }
+  pre .kw { color: #569cd6; }
+  pre .str { color: #ce9178; }
+  pre .flag { color: #9cdcfe; }
+  pre .cmd { color: #dcdcaa; }
+
+  /* File tree */
+  .file-tree {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 20px 24px;
+    border-radius: 10px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 2;
+    margin: 16px 0 20px;
+  }
+  .file-tree .new { color: #4ec9b0; font-weight: 600; }
+  .file-tree .mod { color: #dcdcaa; }
+  .file-tree .orig { color: #666; }
+  .file-tree .label {
+    font-size: 10px;
+    background: #4ec9b0;
+    color: #1e1e1e;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .file-tree .label.mod-label {
+    background: #dcdcaa;
+  }
+
+  /* Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .card {
+    border: 1px solid #e0e0da;
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .card-icon {
+    font-size: 22px;
+    margin-bottom: 10px;
+  }
+  .card h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #1a1a1a;
+  }
+  .card p { font-size: 13px; color: #555; margin: 0; line-height: 1.5; }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 20px;
+    font-size: 14px;
+  }
+  th {
+    background: #f0f0ec;
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #333;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f0ec;
+    color: #333;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .flow-box {
+    background: #f0f5f1;
+    border: 1px solid #c8dece;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #0a2818;
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    color: #aaa;
+    font-size: 18px;
+    padding: 0 4px;
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .badge-green { background: #e6f4ec; color: #1a7a3c; }
+  .badge-yellow { background: #fef9e7; color: #9a6700; border: 1px solid #f0d060; }
+  .badge-blue { background: #e8f0fe; color: #1a56a0; }
+  .badge-red { background: #fde8e8; color: #9b1c1c; }
+
+  /* Note box */
+  .note {
+    background: #fffbeb;
+    border-left: 3px solid #f59e0b;
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 14px;
+    color: #444;
+  }
+  .note strong { color: #92400e; }
+
+  /* Step list */
+  .steps { list-style: none; padding: 0; margin: 16px 0; }
+  .steps li {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .step-num {
+    background: #0a2818;
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .steps li p { margin: 0; font-size: 14px; }
+
+  /* Divider */
+  hr { border: none; border-top: 1px solid #eee; margin: 40px 0; }
+
+  @media print {
+    body { padding: 20px; font-size: 13px; }
+    .cover { page-break-after: avoid; }
+    section { page-break-inside: avoid; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .toc { page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">Save as PDF</button>
+
+<!-- Cover -->
+<div class="cover">
+  <div class="cover-tag">Project Documentation</div>
+  <h1>Jackdaw Visualization Layer</h1>
+  <div class="cover-sub">A live browser dashboard and terminal display built on top of the Jackdaw Balatro simulator</div>
+  <div class="cover-meta">
+    <span>Base repo: TylerFlar/jackdaw-balatro</span>
+    <span>Built: June 2026</span>
+    <span>Python 3.12+</span>
+  </div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">1. What is Jackdaw?</a></li>
+    <li><a href="#what-we-built">2. What we built</a></li>
+    <li><a href="#structure">3. File structure</a></li>
+    <li><a href="#how-it-works">4. How it works</a></li>
+    <li><a href="#install">5. Installation</a></li>
+    <li><a href="#usage">6. How to run</a></li>
+    <li><a href="#dashboard">7. Using the browser dashboard</a></li>
+    <li><a href="#training">8. Training a PPO agent</a></li>
+    <li><a href="#cli-reference">9. Full CLI reference</a></li>
+  </ol>
+</div>
+
+<!-- 1. Overview -->
+<section id="overview">
+  <h2 class="section-title">1. What is Jackdaw?</h2>
+  <p>Jackdaw is an open-source Python reimplementation of <strong>Balatro</strong> — a poker-based roguelike card game. It runs entirely headless (no graphics, no game window) and is designed for reinforcement learning research: you can simulate thousands of games per minute and train neural network agents against it.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🃏</div>
+      <h4>Game engine</h4>
+      <p>Full Balatro rules: hands, jokers, consumables, shop, blinds, scoring — all in Python.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <h4>RL environment</h4>
+      <p>Wraps the engine as a Gymnasium env so you can train PPO, DQN, or any SB3 algorithm.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">👁️</div>
+      <h4>Visualization (new)</h4>
+      <p>What we added: a live terminal display and browser dashboard to watch or play any game.</p>
+    </div>
+  </div>
+
+  <p>Before our changes, you could only run the engine programmatically — there was no way to actually see what was happening. Every game was just numbers in memory.</p>
+</section>
+
+<!-- 2. What we built -->
+<section id="what-we-built">
+  <h2 class="section-title">2. What we built</h2>
+
+  <h3>Two simultaneous outputs</h3>
+  <p>Every game step broadcasts to two places at the same time:</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">💻</div>
+      <h4>Rich terminal display</h4>
+      <p>Colored panels directly in PowerShell. Cards with suit symbols, score progress bar, phase info, action log.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌐</div>
+      <h4>Browser dashboard</h4>
+      <p>Live web UI at <code>http://127.0.0.1:8765</code>. Auto-opens when you run the game. Real-time updates via WebSocket.</p>
+    </div>
+  </div>
+
+  <h3>Two game modes</h3>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">👁️</div>
+      <h4>Watch mode</h4>
+      <p>An AI agent (random, greedy, or trained PPO) plays automatically. You observe every decision in real time.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">▶️</div>
+      <h4>Play mode</h4>
+      <p>You control every action via the browser. Click cards to select them, click buttons to play, discard, buy, etc.</p>
+    </div>
+  </div>
+
+  <h3>PPO agent integration</h3>
+  <p>We wired a trained <code>MaskablePPO</code> model into the watch mode so you can visually see what a neural network agent does when it plays Balatro. Train for hours, then watch it play through the dashboard.</p>
+</section>
+
+<!-- 3. Structure -->
+<section id="structure">
+  <h2 class="section-title">3. File structure</h2>
+  <p>We added a <code>visualization/</code> package and modified two existing files. Everything else in the repo was left untouched.</p>
+
+  <div class="file-tree">
+jackdaw/<br>
+├── jackdaw/<br>
+│   ├── engine/          <span class="orig"># original game engine — not touched</span><br>
+│   ├── env/             <span class="orig"># original RL gym wrapper — not touched</span><br>
+│   │<br>
+│   ├── cli/<br>
+│   │   ├── main.py      <span class="mod">◆ modified<span class="label mod-label">MOD</span></span><br>
+│   │   └── ppo_agent.py <span class="new">★ new<span class="label">NEW</span></span><br>
+│   │<br>
+│   └── visualization/   <span class="new">★ entire folder is new<span class="label">NEW</span></span><br>
+│       ├── __init__.py<br>
+│       ├── observer.py<br>
+│       ├── rich_renderer.py<br>
+│       ├── web_server.py<br>
+│       └── static/<br>
+│           ├── index.html<br>
+│           ├── style.css<br>
+│           └── app.js<br>
+│<br>
+├── scripts/<br>
+│   └── train_ppo.py     <span class="mod">◆ modified<span class="label mod-label">MOD</span></span><br>
+│<br>
+└── pyproject.toml       <span class="mod">◆ modified<span class="label mod-label">MOD</span></span>
+  </div>
+</section>
+
+<!-- 4. How it works -->
+<section id="how-it-works">
+  <h2 class="section-title">4. How it works</h2>
+
+  <h3>The data flow</h3>
+  <div class="flow">
+    <div class="flow-box">Game engine step()</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">observer.emit()</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">RichRenderer</div>
+    <div class="flow-arrow">+</div>
+    <div class="flow-box">WebServer queue</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Browser via WebSocket</div>
+  </div>
+
+  <p>After every single game action, <code>observer.emit()</code> is called. It serializes the entire game state (cards in hand, jokers, score, legal actions, history) to a Python dict, then hands it to the terminal renderer and drops it into a thread-safe queue for the web server to broadcast.</p>
+
+  <h3>The two servers</h3>
+  <p>The browser dashboard runs two independent servers in background threads:</p>
+
+  <table>
+    <tr>
+      <th>Server</th>
+      <th>Port</th>
+      <th>What it does</th>
+    </tr>
+    <tr>
+      <td><strong>HTTP</strong></td>
+      <td>8765</td>
+      <td>Serves <code>index.html</code>, <code>style.css</code>, <code>app.js</code> to the browser</td>
+    </tr>
+    <tr>
+      <td><strong>WebSocket</strong></td>
+      <td>8766</td>
+      <td>Pushes live game state to the browser every ~40ms. Also receives actions in play mode.</td>
+    </tr>
+  </table>
+
+  <p>They are on separate ports because using a single server for both HTTP and WebSocket caused routing conflicts in every version of FastAPI/Starlette we tried. Two separate servers (Python's built-in <code>http.server</code> + <code>websockets</code> library) is simpler and fully reliable.</p>
+
+  <h3>Watch mode internals</h3>
+  <p>The observer runs the full game loop itself, calling <code>agent(gs, legal_actions)</code> at every step, then sleeping for <code>--speed</code> seconds so you can follow along. After game over it keeps the servers alive until you press Ctrl+C.</p>
+
+  <h3>Play mode internals</h3>
+  <p>The game loop blocks on a thread-safe queue (<code>action_queue.get()</code>). The browser sends a JSON action over WebSocket when you click a button. The server puts it in the queue. The blocked game loop wakes up, deserializes the action, executes it, and sends the new state back.</p>
+
+  <h3>PPO agent internals</h3>
+  <p>To use a trained PPO model in watch mode we had to bridge two different interfaces. The model was trained with Gymnasium's observation/action encoding. The observer expects a simple <code>(gs, legal_actions) → action</code> function. The bridge (<code>ppo_agent.py</code>) does:</p>
+  <ol style="padding-left: 20px; font-size: 14px; line-height: 2; color: #333;">
+    <li>Encode the raw game state dict into numpy arrays using the same <code>encode_observation()</code> function used during training</li>
+    <li>Build the action table and boolean mask using <code>get_action_mask()</code></li>
+    <li>Call <code>model.predict(obs, action_masks=mask)</code></li>
+    <li>Convert the integer output back to an engine Action using <code>factored_to_engine_action()</code></li>
+  </ol>
+</section>
+
+<!-- 5. Installation -->
+<section id="install">
+  <h2 class="section-title">5. Installation</h2>
+
+  <div class="note">
+    <strong>Requirement:</strong> Python 3.12 or newer. Check with <code>python --version</code>.
+  </div>
+
+  <h3>Install the project and visualization dependencies</h3>
+  <p>Run this once from the <code>jackdaw/</code> folder:</p>
+  <pre>pip install -e ".[viz]"</pre>
+
+  <p>The <code>[viz]</code> extra installs: <code>rich</code>, <code>fastapi</code>, <code>uvicorn</code>, <code>websockets</code> on top of the base engine dependencies.</p>
+
+  <h3>Install training dependencies (optional — only for PPO)</h3>
+  <pre>pip install tensorboard sb3-contrib stable-baselines3</pre>
+
+  <h3>Verify installation</h3>
+  <pre>jackdaw --help</pre>
+  <p>You should see two subcommands: <code>validate</code> and <code>run</code>.</p>
+</section>
+
+<!-- 6. Usage -->
+<section id="usage">
+  <h2 class="section-title">6. How to run</h2>
+
+  <h3>Watch mode — AI plays, you observe</h3>
+  <pre><span class="comment"># Random agent (default)</span>
+jackdaw run --mode watch
+
+<span class="comment"># Greedy agent, slower speed so you can follow</span>
+jackdaw run --mode watch --agent greedy --speed 2.0
+
+<span class="comment"># Trained PPO model</span>
+jackdaw run --mode watch --agent ppo --model runs/balatro_ppo/balatro_ppo.zip
+
+<span class="comment"># Terminal only — no browser</span>
+jackdaw run --mode watch --no-web
+
+<span class="comment"># Specific seed so the run is reproducible</span>
+jackdaw run --mode watch --seed HELLO123</pre>
+
+  <h3>Play mode — you control everything</h3>
+  <pre>jackdaw run --mode play</pre>
+  <p>The browser opens automatically at <code>http://127.0.0.1:8765/?mode=play</code>. The game waits at every decision point for you to click an action.</p>
+
+  <h3>Stopping</h3>
+  <p>After a game finishes, the terminal prints the result and says <em>"press Ctrl+C to close"</em>. The browser dashboard stays open showing the final state. Press <strong>Ctrl+C</strong> to exit.</p>
+
+  <div class="note">
+    <strong>First time only:</strong> When the browser opens for the first time, press <strong>Ctrl+Shift+R</strong> to hard-reload and clear any cached files. After that, the server sends <code>Cache-Control: no-cache</code> headers so this is never needed again.
+  </div>
+</section>
+
+<!-- 7. Dashboard -->
+<section id="dashboard">
+  <h2 class="section-title">7. Using the browser dashboard</h2>
+
+  <h3>Layout</h3>
+  <table>
+    <tr><th>Area</th><th>What you see</th></tr>
+    <tr><td><strong>Header bar</strong></td><td>Current phase, ante, money, hands remaining, discards remaining, connection indicator</td></tr>
+    <tr><td><strong>Score bar</strong></td><td>Chip progress toward blind target, last hand name and score breakdown</td></tr>
+    <tr><td><strong>Left sidebar</strong></td><td>Your jokers (navy cards with name, description, cost) and consumables</td></tr>
+    <tr><td><strong>Main area</strong></td><td>Changes per phase: hand of cards, shop items, blind selection screen, etc.</td></tr>
+    <tr><td><strong>Actions bar</strong></td><td>In play mode: clickable buttons. In watch mode: green dot showing AI is playing.</td></tr>
+    <tr><td><strong>Action log</strong></td><td>Every action taken in the current game, newest first</td></tr>
+  </table>
+
+  <h3>Game phases</h3>
+  <table>
+    <tr><th>Phase</th><th>What you see</th><th>What to do (play mode)</th></tr>
+    <tr><td>Blind Select</td><td>The blind name and chip target</td><td>Click <strong>Select Blind</strong> to fight, or <strong>Skip Blind</strong> for a tag reward</td></tr>
+    <tr><td>Playing</td><td>Your 8-card hand</td><td>Click cards to select them, then <strong>Play</strong> or <strong>Discard</strong>. Use <strong>Sort</strong> buttons to reorder.</td></tr>
+    <tr><td>Round Complete</td><td>"Blind Defeated!" screen</td><td>Click <strong>Cash Out</strong> to collect your earnings</td></tr>
+    <tr><td>Shop</td><td>Cards, vouchers, and booster packs for sale</td><td>Click <strong>Buy</strong> to purchase, <strong>Reroll</strong> to refresh, <strong>Next Round</strong> to leave</td></tr>
+    <tr><td>Pack Opening</td><td>Cards to pick from the booster pack</td><td>Click <strong>Pick</strong> to choose a card, or <strong>Skip Pack</strong></td></tr>
+    <tr><td>Game Over</td><td>Win or lose screen with final stats</td><td>Nothing — game is over. Press Ctrl+C in terminal to exit.</td></tr>
+  </table>
+
+  <h3>Card visual guide</h3>
+  <table>
+    <tr><th>Card type</th><th>Appearance</th></tr>
+    <tr><td>Playing card</td><td>White background, rank + suit symbol, red for hearts/diamonds, black for spades/clubs</td></tr>
+    <tr><td>Selected card</td><td>Blue border, lifts up — ready to play or discard</td></tr>
+    <tr><td>Joker</td><td>Navy gradient, gold border, name + description + cost</td></tr>
+    <tr><td>Consumable / shop item</td><td>Colored border by type: tarot, planet, spectral, voucher, booster</td></tr>
+  </table>
+</section>
+
+<!-- 8. Training -->
+<section id="training">
+  <h2 class="section-title">8. Training a PPO agent</h2>
+
+  <h3>Start training</h3>
+  <pre><span class="comment"># ~5 minutes on CPU (~80k steps)</span>
+python scripts/train_ppo.py --total-timesteps 80000
+
+<span class="comment"># Overnight run (more useful model)</span>
+python scripts/train_ppo.py --total-timesteps 2000000</pre>
+
+  <p>The model saves to <code>runs/balatro_ppo/balatro_ppo.zip</code> when finished. If you press <strong>Ctrl+C</strong> during training, the model saves automatically before exiting.</p>
+
+  <h3>Monitor training live</h3>
+  <p>Open a second terminal while training runs:</p>
+  <pre>tensorboard --logdir runs/balatro_ppo</pre>
+  <p>Then open <code>http://localhost:6006</code> in your browser. You'll see live charts of:</p>
+  <table>
+    <tr><th>Metric</th><th>What it means</th></tr>
+    <tr><td><code>mean_rounds_beaten</code></td><td>Average blinds cleared per game. Starts near 0, should rise as training progresses.</td></tr>
+    <tr><td><code>max_ante_reached</code></td><td>Best game so far. Ante 8 = winning the run.</td></tr>
+    <tr><td><code>win_rate</code></td><td>Fraction of games won. Stays 0 for a long time — winning requires beating all 8 antes.</td></tr>
+    <tr><td><code>ep_rew_mean</code></td><td>Average episode reward. Should gradually increase from negative toward positive.</td></tr>
+    <tr><td><code>explained_variance</code></td><td>How well the value function predicts outcomes. Starts negative, should trend toward 1.0.</td></tr>
+  </table>
+
+  <h3>Watch the trained model play</h3>
+  <pre>jackdaw run --mode watch --agent ppo \
+  --model runs/balatro_ppo/balatro_ppo.zip \
+  --speed 1.5</pre>
+
+  <div class="note">
+    <strong>Expectation:</strong> A model trained for only 80k steps will make poor decisions — it hasn't learned the game yet. Expect it to swap cards around or make random-looking choices. Useful behavior typically emerges after 500k–1M steps.
+  </div>
+
+  <h3>Continue training from a saved model</h3>
+  <p>Edit <code>scripts/train_ppo.py</code> and change the model creation line:</p>
+  <pre><span class="comment"># Instead of creating a new model:</span>
+model = MaskablePPO(<span class="str">"MultiInputPolicy"</span>, env, ...)
+
+<span class="comment"># Load and continue from saved:</span>
+model = MaskablePPO.load(<span class="str">"runs/balatro_ppo/balatro_ppo.zip"</span>, env=env)</pre>
+</section>
+
+<!-- 9. CLI reference -->
+<section id="cli-reference">
+  <h2 class="section-title">9. Full CLI reference</h2>
+
+  <pre>jackdaw run [options]
+
+<span class="comment">Mode</span>
+  <span class="flag">--mode</span>         watch | play              (default: watch)
+
+<span class="comment">Agent (watch mode only)</span>
+  <span class="flag">--agent</span>        random | greedy | ppo     (default: random)
+  <span class="flag">--model</span>        path/to/model.zip         (required when --agent ppo)
+
+<span class="comment">Game setup</span>
+  <span class="flag">--deck</span>         b_red | b_blue | b_ghost …  (default: b_red)
+  <span class="flag">--stake</span>        1–8                        (difficulty, default: 1)
+  <span class="flag">--seed</span>         any string                 (e.g. SEED42, default: random)
+
+<span class="comment">Watch mode speed</span>
+  <span class="flag">--speed</span>        seconds between steps      (default: 0.8)
+                 0.2 = fast  |  2.0 = slow
+
+<span class="comment">Output toggles</span>
+  <span class="flag">--no-terminal</span>  disable Rich terminal output
+  <span class="flag">--no-web</span>       disable browser dashboard
+
+<span class="comment">Web server</span>
+  <span class="flag">--web-port</span>     HTTP port                  (default: 8765, WS = port+1)</pre>
+
+  <h3>Examples</h3>
+  <pre><span class="comment"># Watch a random agent at high difficulty</span>
+jackdaw run --mode watch --stake 4 --agent random
+
+<span class="comment"># Play a game yourself</span>
+jackdaw run --mode play --deck b_blue --seed HELLO
+
+<span class="comment"># Watch PPO model, no terminal clutter</span>
+jackdaw run --mode watch --agent ppo \
+  --model runs/balatro_ppo/balatro_ppo.zip \
+  --no-terminal --speed 1.0
+
+<span class="comment"># Fast benchmark run (no display, terminal only)</span>
+jackdaw run --mode watch --no-web --speed 0 --agent greedy</pre>
+</section>
+
+<hr/>
+<p style="font-size: 13px; color: #999; text-align: center;">Jackdaw Visualization Layer · Built June 2026 · github.com/TylerFlar/jackdaw-balatro</p>
+
+</body>
+</html>

@@ -6,6 +6,12 @@ Usage::
     jackdaw validate --category jokers        # run only joker scenarios
     jackdaw validate --scenario joker_joker   # run one scenario
     jackdaw validate --host 127.0.0.1 --port 12346
+
+    jackdaw run --mode watch                  # agent plays, you observe
+    jackdaw run --mode play                   # you play via browser
+    jackdaw run --mode watch --agent greedy --seed SEED42 --deck b_red
+    jackdaw run --mode watch --no-web         # terminal only
+    jackdaw run --mode watch --no-terminal    # browser only
 """
 
 from __future__ import annotations
@@ -55,6 +61,78 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Seconds between actions for animation watching (default: 0.3)",
     )
 
+    # -- run -----------------------------------------------------------------
+    p_run = sub.add_parser(
+        "run",
+        help="Run the simulator with live visualization (terminal + browser dashboard)",
+    )
+    p_run.add_argument(
+        "--mode",
+        choices=("watch", "play"),
+        default="watch",
+        help="watch = agent plays automatically | play = you control via browser (default: watch)",
+    )
+    p_run.add_argument(
+        "--agent",
+        choices=("random", "greedy", "ppo"),
+        default="random",
+        help="Agent to use in watch mode (default: random)",
+    )
+    p_run.add_argument(
+        "--model",
+        default=None,
+        metavar="PATH",
+        help="Path to a saved MaskablePPO .zip file (required when --agent ppo)",
+    )
+    p_run.add_argument(
+        "--deck",
+        default="b_red",
+        metavar="DECK_KEY",
+        help="Deck back key, e.g. b_red, b_blue, b_ghost (default: b_red)",
+    )
+    p_run.add_argument(
+        "--stake",
+        type=int,
+        default=1,
+        choices=range(1, 9),
+        metavar="1-8",
+        help="Stake level 1–8 (default: 1)",
+    )
+    p_run.add_argument(
+        "--seed",
+        default=None,
+        metavar="SEED",
+        help="RNG seed string, e.g. SEED42 (default: random)",
+    )
+    p_run.add_argument(
+        "--speed",
+        type=float,
+        default=0.8,
+        metavar="SECONDS",
+        help="Seconds between steps in watch mode (default: 0.8)",
+    )
+    p_run.add_argument(
+        "--no-terminal",
+        dest="terminal",
+        action="store_false",
+        default=True,
+        help="Disable Rich terminal output",
+    )
+    p_run.add_argument(
+        "--no-web",
+        dest="web",
+        action="store_false",
+        default=True,
+        help="Disable browser dashboard",
+    )
+    p_run.add_argument(
+        "--web-port",
+        type=int,
+        default=8765,
+        metavar="PORT",
+        help="Port for the web dashboard (default: 8765)",
+    )
+
     return parser
 
 
@@ -75,6 +153,84 @@ def main(argv: list[str] | None = None) -> None:
                 delay=args.delay,
             )
         )
+
+    if args.command == "run":
+        _run_command(args)
+
+
+def _run_command(args: argparse.Namespace) -> None:
+    import random as _random
+    import time
+    import webbrowser
+
+    from jackdaw.visualization.observer import GameObserver
+
+    # Resolve seed
+    seed = args.seed or f"SEED{_random.randint(1000, 9999)}"
+
+    observer = GameObserver(
+        use_terminal=args.terminal,
+        use_web=args.web,
+        speed=args.speed,
+        port=args.web_port,
+    )
+
+    with observer:
+        if args.mode == "play":
+            if not args.web:
+                print("Error: play mode requires the web dashboard (remove --no-web).")
+                sys.exit(1)
+            url = f"http://127.0.0.1:{args.web_port}/?mode=play"
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}")
+            print(f"  Opening browser → {url}\n")
+            webbrowser.open(url)
+            result = observer.simulate_play(
+                back_key=args.deck,
+                stake=args.stake,
+                seed=seed,
+            )
+        else:
+            # Watch mode
+            from jackdaw.engine.runner import greedy_play_agent, random_agent
+
+            if args.agent == "ppo":
+                if not args.model:
+                    print("Error: --agent ppo requires --model <path/to/model.zip>")
+                    sys.exit(1)
+                from jackdaw.cli.ppo_agent import make_ppo_agent
+                agent = make_ppo_agent(args.model)
+            elif args.agent == "greedy":
+                agent = greedy_play_agent
+            else:
+                agent = random_agent
+            if args.web:
+                url = f"http://127.0.0.1:{args.web_port}/?mode=watch"
+                print(f"  Opening browser → {url}\n")
+                webbrowser.open(url)
+
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Agent: {args.agent}\n")
+            result = observer.simulate_watched(
+                back_key=args.deck,
+                stake=args.stake,
+                seed=seed,
+                agent=agent,
+            )
+
+        # Final summary (inside `with` so the web server is still alive)
+        won = result.get("won", False)
+        rounds = result.get("round", 0)
+        actions = result.get("actions_taken", 0)
+        dollars = result.get("dollars", 0)
+        status = "WON 🏆" if won else "GAME OVER"
+        print(f"\n  {status}  ·  Rounds: {rounds}  ·  Actions: {actions}  ·  Final $: {dollars}\n")
+
+        if args.web:
+            print("  Dashboard is still open — press Ctrl+C to close.\n")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n  Closing dashboard.")
 
 
 if __name__ == "__main__":
