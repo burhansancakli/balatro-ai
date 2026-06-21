@@ -176,6 +176,11 @@ class BalatroGymnasiumEnv(gymnasium.Env):
         return obs, {"action_mask": self.action_masks()}
 
     def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        # Guard: clamp action to valid range (model may predict out-of-bounds)
+        if not self._action_table:
+            raise RuntimeError("No legal actions available — episode already ended")
+        if action >= len(self._action_table):
+            action = len(self._action_table) - 1
         factored = self._action_table[action]
         game_obs, terminated, truncated, game_mask, info = self._inner.step(factored)
 

@@ -226,6 +226,12 @@ class BridgeAdapter:
             "stake": stake_to_bot.get(stake, "WHITE"),
             "seed": seed,
         }
+        # Return to menu first so repeated resets work (the game may be in
+        # GAME_OVER or any other non-MENU state after a previous episode).
+        try:
+            self._backend.handle("menu", {})
+        except Exception:
+            pass  # already in MENU or backend doesn't support it
         self._last_response = self._backend.handle("start", params)
         self._last_gs = self._build_gs()
         return _snapshot(self._last_gs)

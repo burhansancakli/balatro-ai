@@ -427,6 +427,7 @@ source = { editable = "." }
 dependencies = [
     { name = "gymnasium" },
     { name = "numpy" },
+    { name = "setuptools" },
 ]
 
 [package.optional-dependencies]
@@ -451,6 +452,7 @@ requires-dist = [
     { name = "gymnasium", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "sb3-contrib", marker = "extra == 'train'", specifier = ">=2.3" },
+    { name = "setuptools", specifier = ">=82.0.1" },
     { name = "stable-baselines3", marker = "extra == 'train'", specifier = ">=2.3" },
     { name = "tensorboard", marker = "extra == 'train'", specifier = ">=2.14" },
     { name = "torch", marker = "extra == 'train'", specifier = ">=2.0" },

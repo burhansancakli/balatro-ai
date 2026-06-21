@@ -137,12 +137,149 @@ def action_to_rpc(action: Action, game_state: dict[str, Any] | None = None) -> d
 # ---------------------------------------------------------------------------
 
 
+def _bot_card_to_card(bot_card: dict[str, Any]) -> Any:
+    """Reconstruct an engine Card from a balatrobot card dict.
+
+    The balatrobot card format::
+
+        {
+          "id": int,
+          "key": str,            # "H_A" for playing cards, "j_joker" for jokers, etc.
+          "set": str,            # "DEFAULT", "JOKER", "TAROT", "PLANET", ...
+          "label": str,
+          "value": {"suit": "H", "rank": "A", "effect": ""},
+          "modifier": {"seal": null, "edition": null, "enhancement": null, ...},
+          "state": {"debuff": false, "hidden": false, "highlight": false},
+          "cost": {"sell": int, "buy": int},
+        }
+    """
+    from jackdaw.engine.card import Card
+
+    card = Card()
+
+    bot_set = bot_card.get("set", "DEFAULT")
+    key = bot_card.get("key", "")
+    value = bot_card.get("value") or {}
+    modifier = bot_card.get("modifier") or {}
+    state = bot_card.get("state") or {}
+    cost = bot_card.get("cost") or {}
+
+    # Guard: some fields may be lists instead of dicts (empty Lua tables)
+    if not isinstance(value, dict):
+        value = {}
+    if not isinstance(modifier, dict):
+        modifier = {}
+    if not isinstance(state, dict):
+        state = {}
+    if not isinstance(cost, dict):
+        cost = {}
+
+    # --- Suit letter → name ---
+    _SUIT_FROM_LETTER: dict[str, str] = {
+        "H": "Hearts",
+        "D": "Diamonds",
+        "C": "Clubs",
+        "S": "Spades",
+    }
+    _RANK_FROM_LETTER: dict[str, str] = {
+        "2": "2", "3": "3", "4": "4", "5": "5", "6": "6",
+        "7": "7", "8": "8", "9": "9", "T": "10",
+        "J": "Jack", "Q": "Queen", "K": "King", "A": "Ace",
+    }
+    _ENHANCEMENT_FROM_BOT: dict[str | None, str] = {
+        None: "c_base",
+        "BONUS": "m_bonus",
+        "MULT": "m_mult",
+        "WILD": "m_wild",
+        "GLASS": "m_glass",
+        "STEEL": "m_steel",
+        "STONE": "m_stone",
+        "GOLD": "m_gold",
+        "LUCKY": "m_lucky",
+    }
+    _SEAL_FROM_BOT: dict[str | None, str | None] = {
+        None: None,
+        "GOLD": "Gold",
+        "RED": "Red",
+        "BLUE": "Blue",
+        "PURPLE": "Purple",
+    }
+
+    is_playing_card = bot_set == "DEFAULT"
+
+    if is_playing_card:
+        suit_letter = value.get("suit", "S")
+        rank_letter = value.get("rank", "A")
+        suit_name = _SUIT_FROM_LETTER.get(suit_letter, "Spades")
+        rank_name = _RANK_FROM_LETTER.get(rank_letter, "Ace")
+        card.set_base(key, suit_name, rank_name)
+        # Enhancement
+        enhancement = modifier.get("enhancement")
+        center_key = _ENHANCEMENT_FROM_BOT.get(enhancement, "c_base")
+        card.center_key = center_key
+        if center_key != "c_base":
+            try:
+                card.set_ability(center_key)
+            except (KeyError, FileNotFoundError):
+                card.ability = {"set": "Enhanced", "name": enhancement or ""}
+    else:
+        # Non-playing card (joker, tarot, planet, spectral, voucher)
+        card.center_key = key
+        try:
+            card.set_ability(key)
+        except (KeyError, FileNotFoundError):
+            # Build a minimal ability dict from what we know
+            _SET_FROM_BOT: dict[str, str] = {
+                "JOKER": "Joker",
+                "TAROT": "Tarot",
+                "PLANET": "Planet",
+                "SPECTRAL": "Spectral",
+                "VOUCHER": "Voucher",
+                "BOOSTER": "Booster",
+            }
+            card.ability = {
+                "name": bot_card.get("label", ""),
+                "set": _SET_FROM_BOT.get(bot_set, bot_set),
+            }
+
+    # Seal
+    card.seal = _SEAL_FROM_BOT.get(modifier.get("seal"))
+
+    # Edition
+    edition_str = modifier.get("edition")
+    if edition_str:
+        card.edition = {edition_str.lower(): True}
+
+    # Cost
+    card.cost = cost.get("buy", 0)
+    card.sell_cost = cost.get("sell", 0)
+
+    # Status
+    card.debuff = state.get("debuff", False)
+    if state.get("hidden"):
+        card.facing = "back"
+
+    # Stickers
+    card.eternal = bool(modifier.get("eternal"))
+    perish = modifier.get("perishable")
+    if perish is not None:
+        card.perishable = True
+        card.perish_tally = int(perish)
+    card.rental = bool(modifier.get("rental"))
+
+    # Assign a unique sort_id
+    from jackdaw.engine.card import _next_sort_id
+    card.sort_id = bot_card.get("id", _next_sort_id())
+
+    return card
+
+
 def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
     """Convert a balatrobot gamestate response to our game_state dict.
 
-    Maps the key fields for validation and comparison. Does NOT create
-    a fully functional game_state (no RNG, no Card objects) — this is
-    for read-only comparison purposes.
+    Reconstructs Card objects from the balatrobot card format so that
+    ``get_action_mask`` and ``encode_observation`` can consume the result
+    identically to an engine-produced game_state dict.
     """
     gs: dict[str, Any] = {}
 
@@ -165,32 +302,77 @@ def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
         "hands_played": br.get("hands_played", 0),
         "discards_used": br.get("discards_used", 0),
         "reroll_cost": br.get("reroll_cost", 5),
+        "free_rerolls": br.get("free_rerolls", 0),
     }
     gs["chips"] = br.get("chips", 0)
 
-    # Cards — extract keys only (no full Card objects)
-    gs["hand_keys"] = [c["key"] for c in bot.get("hand", {}).get("cards", [])]
-    gs["hand_count"] = len(gs["hand_keys"])
+    # Cards — build Card objects from bot response
+    gs["hand"] = [_bot_card_to_card(c) for c in bot.get("hand", {}).get("cards", [])]
+    gs["hand_size"] = bot.get("hand", {}).get("limit", 8)
 
-    gs["deck_size"] = bot.get("cards", {}).get("count", 0)
-    gs["deck_keys"] = [c["key"] for c in bot.get("cards", {}).get("cards", [])]
+    gs["deck"] = [_bot_card_to_card(c) for c in bot.get("cards", {}).get("cards", [])]
+    # Keep legacy keys for compatibility
+    gs["hand_keys"] = [c.card_key or c.center_key for c in gs["hand"]]
+    gs["hand_count"] = len(gs["hand"])
+    gs["deck_size"] = len(gs["deck"])
 
-    gs["joker_keys"] = [c["key"] for c in bot.get("jokers", {}).get("cards", [])]
-    gs["joker_count"] = len(gs["joker_keys"])
+    gs["jokers"] = [_bot_card_to_card(c) for c in bot.get("jokers", {}).get("cards", [])]
+    j_area = bot.get("jokers", {})
+    gs["joker_slots"] = j_area.get("limit", 5)
+    gs["joker_count"] = len(gs["jokers"])
+    gs["joker_keys"] = [c.center_key for c in gs["jokers"]]
 
-    gs["consumable_keys"] = [c["key"] for c in bot.get("consumables", {}).get("cards", [])]
+    gs["consumables"] = [_bot_card_to_card(c) for c in bot.get("consumables", {}).get("cards", [])]
+    c_area = bot.get("consumables", {})
+    gs["consumable_slots"] = c_area.get("limit", 2)
+    gs["consumable_keys"] = [c.center_key for c in gs["consumables"]]
 
-    # Blinds
+    # Blinds — find the current blind on deck
     blinds = bot.get("blinds", {})
     gs["blind_info"] = {}
+    blind_on_deck = None
     for btype in ("small", "big", "boss"):
         bi = blinds.get(btype, {})
+        status = bi.get("status", "")
+        name = bi.get("name", "")
+        score = bi.get("score", 0)
         gs["blind_info"][btype] = {
-            "name": bi.get("name", ""),
-            "status": bi.get("status", ""),
-            "score": bi.get("score", 0),
+            "name": name,
+            "status": status,
+            "score": score,
             "tag_name": bi.get("tag_name", ""),
         }
+        # Determine blind_on_deck from status
+        if status == "SELECT":
+            blind_on_deck = btype.capitalize()  # "Small", "Big", "Boss"
+        elif status == "CURRENT":
+            # Create a Blind-like object with chips for score tracking
+            from types import SimpleNamespace
+            gs["blind"] = SimpleNamespace(chips=score, name=name)
+
+    gs["blind_on_deck"] = blind_on_deck
+
+    # Shop (only relevant when phase == SHOP)
+    shop = bot.get("shop", {})
+    if shop:
+        gs["shop_cards"] = [_bot_card_to_card(c) for c in shop.get("cards", [])]
+        gs["shop_vouchers"] = [_bot_card_to_card(c) for c in shop.get("vouchers", [])]
+        gs["shop_boosters"] = [_bot_card_to_card(c) for c in shop.get("boosters", [])]
+    else:
+        gs["shop_cards"] = []
+        gs["shop_vouchers"] = []
+        gs["shop_boosters"] = []
+
+    # Pack state
+    pack = bot.get("pack", {})
+    if pack:
+        gs["pack_cards"] = [_bot_card_to_card(c) for c in pack.get("cards", [])]
+        gs["pack_choices_remaining"] = pack.get("choices_remaining", 0)
+        gs["pack_type"] = pack.get("type", "")
+    else:
+        gs["pack_cards"] = []
+        gs["pack_choices_remaining"] = 0
+        gs["pack_type"] = ""
 
     # Seed / deck / stake
     gs["seed"] = bot.get("seed", "")
