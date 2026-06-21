@@ -10,7 +10,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["gymnasium>=1.0", "numpy>=1.24"]
+dependencies = ["gymnasium>=1.0", "numpy>=1.24", "setuptools<82"]
 
 [project.optional-dependencies]
 train = ["sb3-contrib>=2.3", "stable-baselines3>=2.3", "tensorboard>=2.14", "torch>=2.0"]
