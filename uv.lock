@@ -534,6 +534,12 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+viz = [
+    { name = "fastapi" },
+    { name = "rich" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -558,6 +564,12 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.15.6" },
+]
+viz = [
+    { name = "fastapi", specifier = ">=0.100" },
+    { name = "rich", specifier = ">=13.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.23" },
+    { name = "websockets", specifier = ">=11.0" },
 ]
 
 [[package]]
