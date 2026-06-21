@@ -416,9 +416,17 @@ class GameObserver:
         *,
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
+        adapter: Any = None,
     ) -> dict[str, Any]:
-        """Run simulate_run() with live rendering after every step."""
-        gs = initialize_run(back_key, stake, seed, challenge=challenge)
+        """Run simulate_run() with live rendering after every step.
+
+        If *adapter* is provided (e.g. BridgeAdapter), use it instead of
+        the in-process engine.  This enables live mode against real Balatro.
+        """
+        if adapter is not None:
+            gs = adapter.raw_state
+        else:
+            gs = initialize_run(back_key, stake, seed, challenge=challenge)
         self.emit(gs, legal_actions=get_legal_actions(gs))
 
         actions_taken = 0
@@ -435,7 +443,11 @@ class GameObserver:
 
             action = agent(gs, legal)
             try:
-                step(gs, action)
+                if adapter is not None:
+                    adapter.step(action)
+                    gs = adapter.raw_state
+                else:
+                    step(gs, action)
             except IllegalActionError:
                 break
 
@@ -461,12 +473,20 @@ class GameObserver:
         *,
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
+        adapter: Any = None,
     ) -> dict[str, Any]:
-        """Human-driven mode: game waits for the browser to send each action."""
+        """Human-driven mode: game waits for the browser to send each action.
+
+        If *adapter* is provided (e.g. BridgeAdapter), use it instead of
+        the in-process engine.  This enables live mode against real Balatro.
+        """
         if not self.use_web:
             raise RuntimeError("Play mode requires --web to be enabled.")
 
-        gs = initialize_run(back_key, stake, seed, challenge=challenge)
+        if adapter is not None:
+            gs = adapter.raw_state
+        else:
+            gs = initialize_run(back_key, stake, seed, challenge=challenge)
 
         actions_taken = 0
         while actions_taken < max_actions:
@@ -486,7 +506,11 @@ class GameObserver:
             action_data = self._action_queue.get()
             try:
                 action = deserialize_action(action_data)
-                step(gs, action)
+                if adapter is not None:
+                    adapter.step(action)
+                    gs = adapter.raw_state
+                else:
+                    step(gs, action)
                 actions_taken += 1
             except (ValueError, IllegalActionError):
                 # Re-emit same state so browser can try again

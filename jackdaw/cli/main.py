@@ -12,6 +12,7 @@ Usage::
     jackdaw run --mode watch --agent greedy --seed SEED42 --deck b_red
     jackdaw run --mode watch --no-web         # terminal only
     jackdaw run --mode watch --no-terminal    # browser only
+    jackdaw run --mode watch --host 127.0.0.1 # live mode against real Balatro
 """
 
 from __future__ import annotations
@@ -132,6 +133,19 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PORT",
         help="Port for the web dashboard (default: 8765)",
     )
+    p_run.add_argument(
+        "--host",
+        default=None,
+        metavar="HOST",
+        help="Connect to live Balatro via balatrobot (e.g. 127.0.0.1)",
+    )
+    p_run.add_argument(
+        "--port",
+        type=int,
+        default=12346,
+        metavar="PORT",
+        help="Balatrobot port (default: 12346, used with --host)",
+    )
 
     return parser
 
@@ -168,6 +182,18 @@ def _run_command(args: argparse.Namespace) -> None:
     # Resolve seed
     seed = args.seed or f"SEED{_random.randint(1000, 9999)}"
 
+    # Build adapter for live mode if --host is provided
+    adapter = None
+    live_mode = args.host is not None
+    if live_mode:
+        from jackdaw.bridge.backend import LiveBackend
+        from jackdaw.env.game_interface import BridgeAdapter
+
+        backend = LiveBackend(host=args.host, port=args.port)
+        adapter = BridgeAdapter(backend)
+        adapter.reset(back_key=args.deck, stake=args.stake, seed=seed)
+        print(f"  🔴 LIVE MODE — connected to {args.host}:{args.port}")
+
     observer = GameObserver(
         use_terminal=args.terminal,
         use_web=args.web,
@@ -188,6 +214,7 @@ def _run_command(args: argparse.Namespace) -> None:
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
+                adapter=adapter,
             )
         else:
             # Watch mode
@@ -208,12 +235,14 @@ def _run_command(args: argparse.Namespace) -> None:
                 print(f"  Opening browser → {url}\n")
                 webbrowser.open(url)
 
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Agent: {args.agent}\n")
+            mode_label = "LIVE" if live_mode else "SIM"
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Agent: {args.agent}  |  Mode: {mode_label}\n")
             result = observer.simulate_watched(
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
                 agent=agent,
+                adapter=adapter,
             )
 
         # Final summary (inside `with` so the web server is still alive)
