@@ -24,7 +24,7 @@ import atexit
 from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 from stable_baselines3.common.callbacks import (
     EvalCallback,
     CheckpointCallback,
@@ -271,17 +271,46 @@ class StrategyLogCallback(BaseCallback):
 
 
 class ResearchCallback(BaseCallback):
-    """Log research metrics emitted by BalatroEnv info dicts."""
+    """
+    Log Balatro game metrics to TensorBoard, aggregated per episode.
+    Collects stats only when an episode finishes (done=True) and flushes
+    aggregated metrics to 'balatro/' at the end of each rollout.
+    """
+
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+        self._ep_antes:  list[float] = []
+        self._ep_wins:   list[float] = []
+        self._ep_rounds: list[float] = []
 
     def _on_step(self) -> bool:
-        #for info in self.locals.get("infos", []):
-        #    if "ante_reached" in info:
-        #        self.logger.record("research/ante_reached", info["ante_reached"])  # ante reached information is wrong. it doesnt show the latest ante that we have reached, only the ante that the latest iteration that has reached.  I'm not sure whether other data reported here are also wrong.
-        #    if "jokers_bought" in info:
-        #        self.logger.record("research/jokers_bought", info["jokers_bought"])
-        #    if "won" in info:
-        #        self.logger.record("research/win_rate", float(info["won"]))
+        infos = self.locals.get("infos", [])
+        dones = self.locals.get("dones", [])
+
+        for info, done in zip(infos, dones):
+            if done:
+                ante          = int(info.get("ante_reached", info.get("ante", 1)))
+                won           = float(info.get("won", False))
+                rounds_beaten = max(0, int(info.get("round", 1)) - 1)
+
+                self._ep_antes.append(ante)
+                self._ep_wins.append(won)
+                self._ep_rounds.append(rounds_beaten)
+
         return True
+
+    def _on_rollout_end(self) -> None:
+        if not self._ep_antes:
+            return
+
+        self.logger.record("balatro/mean_ante_reached",  np.mean(self._ep_antes))
+        self.logger.record("balatro/max_ante_reached",   float(np.max(self._ep_antes)))
+        self.logger.record("balatro/win_rate",           np.mean(self._ep_wins))
+        self.logger.record("balatro/mean_rounds_beaten", np.mean(self._ep_rounds))
+
+        self._ep_antes  = []
+        self._ep_wins   = []
+        self._ep_rounds = []
 
 
 # ─────────────────────────────────────────────────────────────
@@ -299,6 +328,14 @@ def train(manager: BalatrobotManager, ports: list, seeds: list):
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
+    vec_env = VecNormalize(
+        vec_env,
+        norm_obs=True,       # normalize observations to zero-mean, unit-variance
+        norm_reward=True,    # normalize rewards — stabilizes value_loss
+        clip_obs=10.0,
+        clip_reward=10.0,
+        gamma=GAMMA,
+    )
     print(f" Environments ready")
 
     eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
