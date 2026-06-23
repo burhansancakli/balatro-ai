@@ -21,7 +21,7 @@ import subprocess
 import requests
 import signal
 import atexit
-
+from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
@@ -41,8 +41,6 @@ from env import BalatroEnv, DECK, STAKE
 # ─────────────────────────────────────────────────────────────
 
 # PORTS  = [12346, 12347, 12348, 12349]
-PORTS = random.sample(range(10000, 65535), 4)
-SEEDS  = ["TRAIN01", "TRAIN02", "TRAIN03", "TRAIN04"]
 BALATROBOT_VERSION = "1.4.1"
 
 SAVE_DIR = Path.cwd() / "balatro_saves"
@@ -111,10 +109,10 @@ class BalatrobotManager:
             self.processes[port] = proc
             return True
         except FileNotFoundError:
-            print(f"  [port {port}] ❌ 'uvx' not found. Is Balatrobot installed?")
+            print(f"  [port {port}]  'uvx' not found. Is Balatrobot installed?")
             return False
         except Exception as e:
-            print(f"  [port {port}] ❌ Failed to start: {e}")
+            print(f"  [port {port}]  Failed to start: {e}")
             return False
 
     def wait_healthy(self, port: int) -> bool:
@@ -129,14 +127,14 @@ class BalatrobotManager:
                     "jsonrpc": "2.0", "method": "health", "params": {}, "id": 1
                 }, timeout=3)
                 if r.json().get("result", {}).get("status") == "ok":
-                    print(" ✅")
+                    print("Successful")
                     return True
             except Exception:
                 pass
             print(".", end="", flush=True)
             time.sleep(HEALTH_INTERVAL)
 
-        print(f" ❌ timeout after {HEALTH_TIMEOUT}s")
+        print(f"  timeout after {HEALTH_TIMEOUT}s")
         return False
 
     def start_all(self) -> bool:
@@ -224,10 +222,10 @@ def create_save_files(ports: list, seeds: list):
                 "id": 1
             }, timeout=10)
 
-            print(f"  ✅ Saved to {save_path}")
+            print(f"  Saved to {save_path}")
 
         except Exception as e:
-            print(f"  ❌ Failed: {e}")
+            print(f"   Failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -276,13 +274,13 @@ class ResearchCallback(BaseCallback):
     """Log research metrics emitted by BalatroEnv info dicts."""
 
     def _on_step(self) -> bool:
-        for info in self.locals.get("infos", []):
-            if "ante_reached" in info:
-                self.logger.record("research/ante_reached", info["ante_reached"])
-            if "jokers_bought" in info:
-                self.logger.record("research/jokers_bought", info["jokers_bought"])
-            if "won" in info:
-                self.logger.record("research/win_rate", float(info["won"]))
+        #for info in self.locals.get("infos", []):
+        #    if "ante_reached" in info:
+        #        self.logger.record("research/ante_reached", info["ante_reached"])  # ante reached information is wrong. it doesnt show the latest ante that we have reached, only the ante that the latest iteration that has reached.  I'm not sure whether other data reported here are also wrong.
+        #    if "jokers_bought" in info:
+        #        self.logger.record("research/jokers_bought", info["jokers_bought"])
+        #    if "won" in info:
+        #        self.logger.record("research/win_rate", float(info["won"]))
         return True
 
 
@@ -290,20 +288,20 @@ class ResearchCallback(BaseCallback):
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(manager: BalatrobotManager):
+def train(manager: BalatrobotManager, ports: list, seeds: list):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
-    print(f"\nBuilding {len(PORTS)} parallel environments...")
-    env_fns = [
+    print(f"\nBuilding {len(ports)} parallel environments...")
+    env_fns: Any = [
         make_env(port, seed, rank)
-        for rank, (port, seed) in enumerate(zip(PORTS, SEEDS))
+        for rank, (port, seed) in enumerate(zip(ports, seeds))
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
-    print(f"✅ Environments ready")
+    print(f" Environments ready")
 
-    eval_env = SubprocVecEnv([make_env(PORTS[0], SEEDS[0], 99)])
+    eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
     eval_env = VecMonitor(eval_env)
 
     model = PPO(
@@ -324,20 +322,21 @@ def train(manager: BalatrobotManager):
 
     callbacks = [
         CheckpointCallback(
-            save_freq   = CHECKPOINT_FREQ // len(PORTS),
+            save_freq   = CHECKPOINT_FREQ // len(ports),
             save_path   = MODEL_DIR,
             name_prefix = "balatro_ppo",
         ),
-        EvalCallback(
-            eval_env,
-            eval_freq            = EVAL_FREQ // len(PORTS),
-            best_model_save_path = os.path.join(MODEL_DIR, "best"),
-            log_path             = LOG_DIR,
-            deterministic        = True,
-            render               = False,
-        ),
+        #EvalCallback(
+        #    eval_env,
+        #    eval_freq            = EVAL_FREQ // len(ports),
+        #    best_model_save_path = os.path.join(MODEL_DIR, "best"),
+        #    log_path             = LOG_DIR,
+        #    deterministic        = True,
+        #    render               = False,
+        #),
         StrategyLogCallback(),
         ResearchCallback(),
+        GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
     ]
 
     print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
@@ -348,7 +347,7 @@ def train(manager: BalatrobotManager):
         total_timesteps = TOTAL_STEPS,
         callback        = callbacks,
         log_interval    = 1,
-        progress_bar    = True,
+        progress_bar    = False,
     )
 
     elapsed = time.time() - t_start
@@ -372,18 +371,24 @@ if __name__ == "__main__":
                         help="Only start instances and create save files")
     parser.add_argument("--no-launch", action="store_true",
                         help="Skip launching instances (if already running)")
+    parser.add_argument("-n", "--instances", type=int, default=4,
+                        help="Number of parallel Balatrobot instances (default: 4)")
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
     BALATROBOT_FLAGS.extend(unknown_args)
+
+    PORTS = random.sample(range(10000, 65535), args.instances)
+    SEEDS = [f"TRAIN{i:02d}" for i in range(1, args.instances + 1)]
+
     manager = BalatrobotManager(PORTS)
 
     if not args.no_launch:
         ok = manager.start_all()
         if not ok:
-            print("\n❌ Not all instances healthy. Check Balatrobot installation.")
+            print("\n Not all instances healthy. Check Balatrobot installation.")
             manager.kill_all()
             exit(1)
-        print(f"\n✅ All {len(PORTS)} instances running\n")
+        print(f"\n All {len(PORTS)} instances running\n")
         time.sleep(3)   # give games time to fully initialize
 
     # Create save files
@@ -400,4 +405,4 @@ if __name__ == "__main__":
         print("Setup complete. Run 'python train.py --no-launch' to train.")
         exit(0)
 
-    train(manager)
+    train(manager, PORTS, SEEDS)

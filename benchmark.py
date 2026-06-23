@@ -84,16 +84,6 @@ def stats_block(label: str, times: list, unit="s"):
     return avg
 
 
-def rating(label: str, value, thresholds: list, units=""):
-    """Print a value with a qualitative rating."""
-    ratings = ["🔴 Poor", "🟠 Fair", "🟡 Acceptable", "🟢 Good", "✅ Excellent"]
-    idx = 0
-    for t in thresholds:
-        if value >= t:
-            idx += 1
-    print(f"  {label}: {value:.2f}{units}  →  {ratings[min(idx, len(ratings)-1)]}")
-
-
 # ─────────────────────────────────────────────
 # SECTION 1: HEALTH CHECK
 # ─────────────────────────────────────────────
@@ -109,7 +99,7 @@ def check_health():
         print(f"  Time    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         return True
     except Exception as e:
-        print(f"  ❌ Health check failed: {e}")
+        print(f"   Health check failed: {e}")
         print(f"  Make sure Balatrobot is running on {URL}")
         return False
 
@@ -161,7 +151,6 @@ def bench_reset():
     speedup = avg_start / avg_load
     print(f"\n  Speedup (load vs start): {speedup:.2f}x")
     print(f"  Recommended strategy   : load()")
-    rating("  Training suitability", speedup, [1.5, 2.0, 3.0, 5.0], "x speedup")
 
     return avg_load, avg_start
 
@@ -224,7 +213,6 @@ def bench_rpc_latency():
 
     overall_avg = statistics.mean(results.values())
     print()
-    rating("  Avg RPC latency", overall_avg, [200, 100, 50, 20], "ms (lower=better, inverted)")
 
     return results
 
@@ -321,8 +309,6 @@ def bench_episodes():
     print(f"  Episodes / hour    : {eps_per_hr:.0f}")
     print(f"  Total bench time   : {total_elapsed:.1f}s")
 
-    rating("  Training speed (1 instance)", eps_per_min, [5, 10, 20, 40])
-
     return {
         "avg_dur": avg_dur,
         "avg_steps": avg_steps,
@@ -336,7 +322,7 @@ def bench_episodes():
 # SECTION 5: TRAINING FEASIBILITY PROJECTION
 # ─────────────────────────────────────────────
 def training_projection(eps_per_min_single: float, avg_dur: float, avg_steps: float):
-    section("5 / Training Feasibility Projection")
+    section("5 / Training Results")
 
     print(f"  Based on measured {eps_per_min_single:.1f} eps/min on a single instance.\n")
 
@@ -354,11 +340,7 @@ def training_projection(eps_per_min_single: float, avg_dur: float, avg_steps: fl
         t10k_str  = f"{t10k:.0f}min" if t10k < 60 else f"{t10k/60:.1f}hr"
         t100k_str = f"{t100k:.0f}min" if t100k < 60 else f"{t100k/60:.1f}hr"
         assessment = (
-            "✅ Excellent" if epm > 60 else
-            "🟢 Good"      if epm > 30 else
-            "🟡 Acceptable"if epm > 15 else
-            "🟠 Marginal"  if epm > 8  else
-            "🔴 Slow"
+            "EPM: "+f"{epm:.1f}"
         )
         print(f"  {n:<12} {epm:>10.1f} {eph:>10.0f} {t10k_str:>12} {t100k_str:>12}  {assessment}")
 
@@ -372,25 +354,10 @@ def training_projection(eps_per_min_single: float, avg_dur: float, avg_steps: fl
         mins = target / epm_4
         hrs  = mins / 60
         time_str = f"{mins:.0f}min" if mins < 60 else f"{hrs:.1f}hr"
-        overnight = "✅ Yes" if hrs <= 8 else ("🟡 Maybe" if hrs <= 16 else "🔴 No")
+        overnight = "Yes" if hrs <= 8 else ("Maybe" if hrs <= 16 else "No")
         print(f"  {target:>10,}  {time_str:>12}  {overnight:>12}")
 
     # Research context
-    print(f"""
-  Research Context:
-  ─────────────────
-  For a research comparison (flat PPO vs hierarchical agent) you need
-  enough episodes to show a clear learning curve. Typical thresholds:
-
-    • 1,000  eps  — sanity check (agent improves at all?)
-    • 10,000 eps  — rough learning curve visible
-    • 50,000 eps  — solid comparison between agents
-    • 100,000 eps — publication-quality results
-
-  With 4 parallel instances, 50k episodes is achievable overnight.
-  This is sufficient for a master's research project demonstration.
-    """)
-
     # Step-based projection (for when env is more complex)
     steps_per_hr = (avg_steps / avg_dur) * 3600
     print(f"  Steps / second (1 instance) : {avg_steps/avg_dur:.1f}")
@@ -430,11 +397,10 @@ def print_summary(avg_load, avg_start, rpc_results, ep_results):
     Eps / minute   : {ep_results['eps_per_min']:.1f}  (1 instance)
     Eps / hour     : {ep_results['eps_per_hr']:.0f}   (1 instance)
 
-  Training Recommendation
+  Training Projection
     Instances      : 4 parallel  (separate ports)
     Projected eps/hr (4x): {ep_results['eps_per_hr']*4:.0f}
     Time for 50k eps (4x): {50_000/(ep_results['eps_per_min']*4)/60:.1f}hr
-    Verdict        : ✅ Feasible for research-scale training
     """)
 
 

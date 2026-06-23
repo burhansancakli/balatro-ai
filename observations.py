@@ -7,7 +7,7 @@ Imports joker definitions from jokers.py — do not hardcode jokers here.
 Observation layout:
   [0]     ante_num            normalized 0-1  (max ante = 8)
   [1]     round_num           normalized 0-1  (max round = 3)
-  [2]     money               normalized 0-1  (clipped at $100)
+  [2]     money               normalized 0-1  (clipped at $100). # Because saving more money doesn't serve any purpose.
   [3]     blind_target        normalized 0-1  (clipped at 100_000)
   [4]     chips_so_far        normalized 0-1  (clipped at 100_000)
   [5]     progress_ratio      chips / blind_target  (0-1)
@@ -50,6 +50,7 @@ MAX_JOKER_SLOTS = 5
 
 # Computed automatically — import this in env.py
 OBS_SIZE = 9 + (8 * 2) + (MAX_JOKER_SLOTS * 2)  # = 35 for 5 joker slots
+# ante, round, money, blind_target, chips, progress, hands_left, discards_left, hand_count. + 8 cards with rank and suit. + 5 jokers with idx and active.
 
 
 # ─────────────────────────────────────────────────────────────
@@ -109,7 +110,8 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
 
     obs[0] = _clip_norm(raw_state.get("ante_num",  0), MAX_ANTE)
     obs[1] = _clip_norm(raw_state.get("round_num", 0), MAX_ROUND)
-    obs[2] = _clip_norm(raw_state.get("money",     0), MAX_MONEY)
+    # Money is downweighted by 50% after ante 3, because it becomes less relevant to save money for future rounds.
+    obs[2] = _clip_norm(raw_state.get("money",     0), MAX_MONEY) * 0.5 if raw_state.get("ante_num", 0) >= 3 else 1.0
     obs[3] = _clip_norm(blind_target,                  MAX_BLIND)
     obs[4] = _clip_norm(chips,                         MAX_CHIPS)
     obs[5] = float(np.clip(chips / blind_target, 0.0, 1.0)) if blind_target > 0 else 0.0
