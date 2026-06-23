@@ -41,8 +41,6 @@ from env import BalatroEnv, DECK, STAKE
 # ─────────────────────────────────────────────────────────────
 
 # PORTS  = [12346, 12347, 12348, 12349]
-PORTS = random.sample(range(10000, 65535), 4)
-SEEDS  = ["TRAIN01", "TRAIN02", "TRAIN03", "TRAIN04"]
 BALATROBOT_VERSION = "1.4.1"
 
 SAVE_DIR = Path.cwd() / "balatro_saves"
@@ -290,20 +288,20 @@ class ResearchCallback(BaseCallback):
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(manager: BalatrobotManager):
+def train(manager: BalatrobotManager, ports: list, seeds: list):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
-    print(f"\nBuilding {len(PORTS)} parallel environments...")
+    print(f"\nBuilding {len(ports)} parallel environments...")
     env_fns: Any = [
         make_env(port, seed, rank)
-        for rank, (port, seed) in enumerate(zip(PORTS, SEEDS))
+        for rank, (port, seed) in enumerate(zip(ports, seeds))
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
     print(f" Environments ready")
 
-    eval_env = SubprocVecEnv([make_env(PORTS[0], SEEDS[0], 99)])
+    eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
     eval_env = VecMonitor(eval_env)
 
     model = PPO(
@@ -324,13 +322,13 @@ def train(manager: BalatrobotManager):
 
     callbacks = [
         CheckpointCallback(
-            save_freq   = CHECKPOINT_FREQ // len(PORTS),
+            save_freq   = CHECKPOINT_FREQ // len(ports),
             save_path   = MODEL_DIR,
             name_prefix = "balatro_ppo",
         ),
         #EvalCallback(
         #    eval_env,
-        #    eval_freq            = EVAL_FREQ // len(PORTS),
+        #    eval_freq            = EVAL_FREQ // len(ports),
         #    best_model_save_path = os.path.join(MODEL_DIR, "best"),
         #    log_path             = LOG_DIR,
         #    deterministic        = True,
@@ -373,9 +371,15 @@ if __name__ == "__main__":
                         help="Only start instances and create save files")
     parser.add_argument("--no-launch", action="store_true",
                         help="Skip launching instances (if already running)")
+    parser.add_argument("-n", "--instances", type=int, default=4,
+                        help="Number of parallel Balatrobot instances (default: 4)")
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
     BALATROBOT_FLAGS.extend(unknown_args)
+
+    PORTS = random.sample(range(10000, 65535), args.instances)
+    SEEDS = [f"TRAIN{i:02d}" for i in range(1, args.instances + 1)]
+
     manager = BalatrobotManager(PORTS)
 
     if not args.no_launch:
@@ -401,4 +405,4 @@ if __name__ == "__main__":
         print("Setup complete. Run 'python train.py --no-launch' to train.")
         exit(0)
 
-    train(manager)
+    train(manager, PORTS, SEEDS)
