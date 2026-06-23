@@ -57,12 +57,16 @@ class GameStatusCallback(BaseCallback):
         updated = False
 
         for info in infos:
+            jokers = info.get("joker_labels", [])
+            joker_str = ", ".join(jokers) if jokers else "none"
+
             for line in info.get("hand_logs", []):
                 match = re.match(r"\[seed ([^\]]+)\] (.*)", line)
                 if match:
                     seed = match.group(1)
                     msg = match.group(2)
-                    self.status_by_seed[seed] = msg
+                    full_msg = f"{msg}  |  jokers=[{joker_str}]"
+                    self.status_by_seed[seed] = full_msg
                     updated = True
 
         if self.progress_bar is not None:

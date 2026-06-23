@@ -249,6 +249,8 @@ class BalatroEnv(gym.Env):
         terminated = done
         truncated  = self._steps >= MAX_STEPS
 
+        joker_labels = parse_jokers_from_gamestate(gamestate)
+
         info = {
             "strategy":       strategy.name,
             "ante":           gamestate.get("ante_num", 0),
@@ -257,6 +259,7 @@ class BalatroEnv(gym.Env):
             "won":            gamestate.get("won", False),
             "jokers_bought":  self._jokers_bought_episode,
             "episode_reward": self._episode_reward,
+            "joker_labels":   joker_labels,
             "hand_logs":      hand_logs,
         }
 

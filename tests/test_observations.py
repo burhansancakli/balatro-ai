@@ -22,5 +22,5 @@ def test_observation_encodes_known_joker_slot():
 
     obs = gamestate_to_observation(state)
 
-    assert obs[25] >= 0.0
-    assert obs[26] == 1.0
+    assert obs[4] >= 0.0
+    assert obs[5] == 1.0
