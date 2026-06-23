@@ -75,7 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument(
         "--agent",
-        choices=("random", "greedy", "ppo"),
+        choices=("random", "greedy", "smart", "ppo"),
         default="random",
         help="Agent to use in watch mode (default: random)",
     )
@@ -228,6 +228,9 @@ def _run_command(args: argparse.Namespace) -> None:
                 agent = make_ppo_agent(args.model)
             elif args.agent == "greedy":
                 agent = greedy_play_agent
+            elif args.agent == "smart":
+                from jackdaw.cli.smart_agent import smart_agent
+                agent = smart_agent
             else:
                 agent = random_agent
             if args.web:
