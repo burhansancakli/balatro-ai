@@ -10,14 +10,10 @@ Observation layout:
   [2]     money               normalized 0-1  (clipped at $100)
   [3]     blind_target        normalized 0-1  (clipped at 100_000)
   [4 - 4+MAX_JOKER_SLOTS*2-1]  5 joker slots × (joker_idx, active)
+  [14 - 14+MAX_SHOP_SLOTS*2-1]  4 shop slots × (joker_idx, cost)
 
 OBS_SIZE is computed automatically from NUM_JOKERS.
 Adding jokers in jokers.py automatically expands the vector.
-
-Note: cards, chips, progress, hands_left, discards_left, and hand_count
-are excluded because the agent decides strategy once per ante (at the
-shop), where these values are meaningless — it cannot predict future
-card draws.
 """
 
 import numpy as np
@@ -42,10 +38,12 @@ MAX_ROUND       = 3.0
 MAX_MONEY       = 100.0
 MAX_BLIND       = 100_000.0
 MAX_JOKER_SLOTS = 5
+MAX_SHOP_SLOTS  = 4   # max shop cards shown to the model
+MAX_SHOP_COST   = 10.0  # jokers rarely exceed $8
 
 # Computed automatically — import this in env.py
-# 4 scalars + 5 joker slots × 2 values each
-OBS_SIZE = 4 + (MAX_JOKER_SLOTS * 2)  # = 14
+# 4 scalars + 5 joker slots × 2 values + 4 shop slots × 2 values
+OBS_SIZE = 4 + (MAX_JOKER_SLOTS * 2) + (MAX_SHOP_SLOTS * 2)  # = 22
 
 
 # ─────────────────────────────────────────────────────────────
@@ -121,6 +119,25 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
             obs[base]     = -1.0
             obs[base + 1] = 0.0
 
+    # ── Shop slots [14-21] ───────────────────────────────────
+    shop        = raw_state.get("shop", {}) or {}
+    shop_cards  = shop.get("cards", []) or []
+    shop_base   = 4 + MAX_JOKER_SLOTS * 2  # = 14
+
+    for i in range(MAX_SHOP_SLOTS):
+        base = shop_base + i * 2
+        if i < len(shop_cards):
+            card      = shop_cards[i]
+            label     = card.get("label", "")
+            joker_idx = JOKER_INDEX.get(label, -1)
+            cost_dict = card.get("cost", {}) or {}
+            cost      = float(cost_dict.get("buy", 0) or 0)
+            obs[base]     = float(joker_idx) / max(NUM_JOKERS - 1, 1) if joker_idx >= 0 else -1.0
+            obs[base + 1] = _clip_norm(cost, MAX_SHOP_COST)
+        else:
+            obs[base]     = -1.0
+            obs[base + 1] = 0.0
+
     return obs
 
 
@@ -149,6 +166,7 @@ def pretty_print_observation(obs: np.ndarray) -> None:
     labels = (
         ["ante", "round", "money", "blind_target"]
         + [f"joker{i//2}_{'idx' if i%2==0 else 'active'}" for i in range(MAX_JOKER_SLOTS * 2)]
+        + [f"shop{i//2}_{'idx' if i%2==0 else 'cost'}" for i in range(MAX_SHOP_SLOTS * 2)]
     )
     print(f"Observation vector (size={OBS_SIZE}, jokers={NUM_JOKERS}):")
     for i, (label, val) in enumerate(zip(labels, obs)):

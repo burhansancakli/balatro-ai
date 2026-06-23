@@ -248,24 +248,25 @@ def make_env(port: int, seed: str, rank: int):
 # STRATEGY LOG CALLBACK
 # ─────────────────────────────────────────────────────────────
 
-class StrategyLogCallback(BaseCallback):
-    """Log high-level strategy selection frequencies to TensorBoard."""
+class ShopActionLogCallback(BaseCallback):
+    """Log shop action frequencies to TensorBoard."""
 
-    def __init__(self, verbose=0):
+    def __init__(self, verbose=0, n_actions=5):
         super().__init__(verbose)
-        self.strategy_counts = [0, 0, 0]
+        self.action_counts = [0] * n_actions
 
     def _on_step(self) -> bool:
         actions = self.locals.get("actions", [])
         for a in actions:
-            if 0 <= int(a) < 3:
-                self.strategy_counts[int(a)] += 1
+            idx = int(a)
+            if 0 <= idx < len(self.action_counts):
+                self.action_counts[idx] += 1
 
-        total = sum(self.strategy_counts)
+        total = sum(self.action_counts)
         if total > 0 and total % 1000 < len(actions):
-            self.logger.record("strategy/flush_pct",  100 * self.strategy_counts[0] / total)
-            self.logger.record("strategy/pair_pct",   100 * self.strategy_counts[1] / total)
-            self.logger.record("strategy/mult_pct",   100 * self.strategy_counts[2] / total)
+            self.logger.record("shop/skip_pct", 100 * self.action_counts[0] / total)
+            for i in range(1, len(self.action_counts)):
+                self.logger.record(f"shop/buy_{i}_pct", 100 * self.action_counts[i] / total)
 
         return True
 
@@ -334,7 +335,7 @@ def train(manager: BalatrobotManager, ports: list, seeds: list):
         #    deterministic        = True,
         #    render               = False,
         #),
-        StrategyLogCallback(),
+        ShopActionLogCallback(),
         ResearchCallback(),
         GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
     ]
@@ -378,7 +379,7 @@ if __name__ == "__main__":
     BALATROBOT_FLAGS.extend(unknown_args)
 
     PORTS = random.sample(range(10000, 65535), args.instances)
-    SEEDS = [f"TRAIN{i:02d}" for i in range(1, args.instances + 1)]
+    SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
     manager = BalatrobotManager(PORTS)
 
