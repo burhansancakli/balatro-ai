@@ -236,7 +236,7 @@ def make_env(port: int, seed: str, rank: int):
     save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
-        env = BalatroEnv(port=port, save_path=save_path, seed=seed)
+        env = BalatroEnv(port=port, save_path=save_path, seed=seed, emulator=args.emulator)
         env.reset(seed=rank)
         return env
 
@@ -373,6 +373,12 @@ if __name__ == "__main__":
                         help="Skip launching instances (if already running)")
     parser.add_argument("-n", "--instances", type=int, default=4,
                         help="Number of parallel Balatrobot instances (default: 4)")
+    
+    parser.add_argument(
+    "--emulator",
+    action="store_true",
+    help="Run using Jackdaw emulator"
+)
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
     BALATROBOT_FLAGS.extend(unknown_args)
@@ -382,7 +388,7 @@ if __name__ == "__main__":
 
     manager = BalatrobotManager(PORTS)
 
-    if not args.no_launch:
+    if not args.no_launch and not args.emulator:
         ok = manager.start_all()
         if not ok:
             print("\n Not all instances healthy. Check Balatrobot installation.")

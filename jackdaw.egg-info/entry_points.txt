@@ -1,0 +1,2 @@
+[console_scripts]
+jackdaw = cli.main:main
