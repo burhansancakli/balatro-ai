@@ -225,12 +225,18 @@ class BalatroEnv(gym.Env):
         super().reset(seed=seed)
 
         if self.emulator:
-            obs, mask, info = self.sim.reset()
-
-            self._steps = 0
-            self._episode_reward = 0.0
-
-            return np.asarray(obs, dtype=np.float32), info
+            # The emulator returns 3 values (obs, mask, info), not 2!
+            try:
+                obs, mask, info = self.sim.reset(seed=seed)
+            except TypeError:
+                obs, mask, info = self.sim.reset()
+            
+            # Access the raw state directly from the adapter
+            state = self.sim._adapter.raw_state
+            self.last_state = state
+            
+            obs_vector = gamestate_to_observation(state)
+            return np.asarray(obs_vector, dtype=np.float32), info
 
         # Fast reset via load() — 6.75x faster than start()
         self.client.call("load", {"path": self.save_path})
@@ -263,19 +269,83 @@ class BalatroEnv(gym.Env):
         }
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
+        # --- SAFEGUARD: Convert NumPy array scalar / list action into a standard Python int ---
+        if hasattr(action, "item"):
+            action = int(action.item())
+        elif isinstance(action, (list, np.ndarray)):
+            action = int(action[0])
+        else:
+            action = int(action)
+        
         if self.emulator:
+            from emulator.engine.actions import PlayHand, Discard, SelectBlind, CashOut, NextRound, SkipPack
+            strategy = Strategy(action)
+            info = {}
 
-            obs, terminated, truncated, mask, info = self.sim.step(action)
+            # Talk directly to the underlying DirectAdapter to avoid FactoredAction crashes
+            while True:
+                state = self.sim._adapter.raw_state
+                self.last_state = state
 
-            reward = self._jackdaw_reward(info)
+                terminated = self.sim._adapter.done
+                truncated = self.sim._step_count >= self.sim._max_steps
+                won = self.sim._adapter.won
 
-            return (
-                np.asarray(obs, dtype=np.float32),
-                reward,
-                terminated,
-                truncated,
-                info,
-            )
+                # Terminal checks
+                if terminated or truncated:
+                    info["game_over"] = terminated
+                    info["won"] = won
+                    info["ante"] = self.sim.episode_ante
+                    info["ante_reached"] = self.sim.episode_ante
+                    reward = self._jackdaw_reward(info)
+                    return np.asarray(gamestate_to_observation(state), dtype=np.float32), reward, terminated, truncated, info
+
+                # DirectAdapter natively provides legal actions!
+                legal_actions = self.sim._adapter.get_legal_actions()
+                chosen_action = None
+
+                # Automatically handle administrative selection phases
+                for a in legal_actions:
+                    if isinstance(a, (SelectBlind, CashOut, NextRound, SkipPack)):
+                        chosen_action = a
+                        break
+
+                # Map strategy to cards
+                if chosen_action is None:
+                    hand_cards = parse_cards_from_gamestate(state)
+                    jokers = parse_jokers_from_gamestate(state)
+                    indices, hand_type, _ = pick_best_play(
+                        hand_cards=hand_cards, 
+                        strategy=strategy, 
+                        joker_labels=jokers
+                    )
+
+                    if not indices and hand_cards:
+                        indices = [0]
+
+                    # jsut like for real game
+                    chosen_action = PlayHand(card_indices=tuple(sorted(indices)))
+
+                if chosen_action is None and legal_actions:
+                    chosen_action = legal_actions[0]
+                elif chosen_action is None:
+                    break
+
+                # Step the adapter directly using low-level Action objects
+                self.sim._adapter.step(chosen_action)
+                self.sim._step_count += 1
+                
+                next_state = self.sim._adapter.raw_state
+
+                # Return control to PPO when entering a new selection phase
+                phase = next_state.get("phase")
+                if phase in ["SHOP", "BLIND_SELECT", "MAIN_MENU"] or self.sim._adapter.done:
+                    info["game_over"] = self.sim._adapter.done
+                    info["won"] = self.sim._adapter.won
+                    info["ante"] = next_state.get("round_resets", {}).get("ante", 1)
+                    info["ante_reached"] = info["ante"]
+                    reward = self._jackdaw_reward(info)
+                    return np.asarray(gamestate_to_observation(next_state), dtype=np.float32), reward, self.sim._adapter.done, truncated, info
 
         assert self.action_space.contains(action), f"Invalid action: {action}"
 
@@ -535,3 +605,29 @@ class BalatroEnv(gym.Env):
             return 2.0
 
         return max(0.0, (ante - 1) * 0.2)
+    
+
+    def _jackdaw_reward(self, info: dict) -> float:
+        """
+        Calculates the reward for emulator steps. 
+        Mirrors the sparse outcome reward logic from the actual game wrapper.
+        """
+        # Align these keys with whatever your Jackdaw sim actually outputs in `info`
+        ante = info.get("ante_reached", info.get("ante", 1))
+        won = info.get("won", False)
+        game_over = info.get("game_over", False) or info.get("terminated", False)
+        
+        # If Jackdaw's wrapper natively calculates a step reward, grab it
+        base_reward = info.get("reward", 0.0)
+
+        # Terminal state rewards
+        if game_over and not won:
+            if ante <= 1:
+                return base_reward - 0.5
+            return base_reward + (ante - 1) * 0.2
+
+        if won:
+            return base_reward + 2.0
+
+        # Ongoing step reward (optional: add progress logic if Jackdaw supports it)
+        return base_reward

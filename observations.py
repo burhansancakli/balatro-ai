@@ -103,30 +103,54 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
 
     # ── Scalars [0-8] ─────────────────────────────────────────
     blind_target = _get_blind_target(raw_state)
-    round_info   = raw_state.get("round", {}) or {}
-    chips        = float(round_info.get("chips", 0))
-    hand         = raw_state.get("hand", {}) or {}
-    hand_cards   = hand.get("cards", []) or []
+    
+    # --- SAFEGUARD: Handle Live Game (dict) vs Emulator (int) ---
+    raw_round = raw_state.get("round", {})
+    if isinstance(raw_round, dict):
+        chips         = float(raw_round.get("chips", 0) or 0)
+        hands_left    = float(raw_round.get("hands_left", 0) or 0)
+        discards_left = float(raw_round.get("discards_left", 0) or 0)
+    else:
+        # Emulator format: round is an int, stats are top-level
+        chips         = float(raw_state.get("chips", raw_state.get("round_chips", 0)) or 0)
+        hands_left    = float(raw_state.get("hands", raw_state.get("hands_left", 4)) or 4)
+        discards_left = float(raw_state.get("discards", raw_state.get("discards_left", 4)) or 4)
+    # ------------------------------------------------------------
+    
+    # Handle Live vs Emulator Hand format
+    hand_obj = raw_state.get("hand", {})
+    if isinstance(hand_obj, list):
+        hand_cards = hand_obj
+    else:
+        hand_cards = hand_obj.get("cards", []) if isinstance(hand_obj, dict) else []
 
     obs[0] = _clip_norm(raw_state.get("ante_num",  0), MAX_ANTE)
     obs[1] = _clip_norm(raw_state.get("round_num", 0), MAX_ROUND)
     # Money is downweighted by 50% after ante 3, because it becomes less relevant to save money for future rounds.
-    obs[2] = _clip_norm(raw_state.get("money",     0), MAX_MONEY) * 0.5 if raw_state.get("ante_num", 0) >= 3 else 1.0
+    obs[2] = _clip_norm(raw_state.get("money",     0), MAX_MONEY) * (0.5 if raw_state.get("ante_num", 0) >= 3 else 1.0)
     obs[3] = _clip_norm(blind_target,                  MAX_BLIND)
     obs[4] = _clip_norm(chips,                         MAX_CHIPS)
     obs[5] = float(np.clip(chips / blind_target, 0.0, 1.0)) if blind_target > 0 else 0.0
-    obs[6] = _clip_norm(round_info.get("hands_left",    0), MAX_HANDS)
-    obs[7] = _clip_norm(round_info.get("discards_left", 0), MAX_DISCARDS)
-    obs[8] = _clip_norm(len(hand_cards),                    MAX_HAND_SIZE)
+    obs[6] = _clip_norm(hands_left,                    MAX_HANDS)
+    obs[7] = _clip_norm(discards_left,                 MAX_DISCARDS)
+    obs[8] = _clip_norm(len(hand_cards),               MAX_HAND_SIZE)
 
     # ── Card slots [9-24] ─────────────────────────────────────
     for i in range(8):
         base = 9 + i * 2
         if i < len(hand_cards):
             card     = hand_cards[i]
-            value    = card.get("value", {}) or {}
-            rank     = value.get("rank", "")
-            suit     = value.get("suit", "")
+            
+            # Handle Emulator raw card objects
+            if hasattr(card, "base") and card.base is not None:
+                rank = card.base.rank.value
+                suit = card.base.suit.value
+            else:
+                # Handle standard dictionaries
+                value = card.get("value", {}) if isinstance(card, dict) else {}
+                rank  = value.get("rank", "")
+                suit  = value.get("suit", "")
+                
             rank_idx = RANKS.index(rank) if rank in RANKS else -1
             suit_idx = SUITS.index(suit) if suit in SUITS else -1
             obs[base]     = float(rank_idx) / 12.0 if rank_idx >= 0 else -1.0
@@ -136,13 +160,23 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
             obs[base + 1] = -1.0
 
     # ── Joker slots [25-34] ───────────────────────────────────
-    jokers      = raw_state.get("jokers", {}) or {}
-    joker_cards = jokers.get("cards", []) or []
+    jokers_obj = raw_state.get("jokers", {})
+    if isinstance(jokers_obj, list):
+        joker_cards = jokers_obj
+    else:
+        joker_cards = jokers_obj.get("cards", []) if isinstance(jokers_obj, dict) else []
 
     for i in range(MAX_JOKER_SLOTS):
         base = 25 + i * 2
         if i < len(joker_cards):
-            label     = joker_cards[i].get("label", "")
+            card = joker_cards[i]
+            
+            # Handle Emulator raw card objects
+            if hasattr(card, "ability"):
+                label = card.ability.get("name", getattr(card, "center_key", ""))
+            else:
+                label = card.get("label", "") if isinstance(card, dict) else ""
+                
             joker_idx = JOKER_INDEX.get(label, -1)
             obs[base]     = float(joker_idx) / max(NUM_JOKERS - 1, 1) if joker_idx >= 0 else -1.0
             obs[base + 1] = 1.0
