@@ -137,12 +137,11 @@ def action_to_rpc(action: Action, game_state: dict[str, Any] | None = None) -> d
 # ---------------------------------------------------------------------------
 
 
-
-
-
 def _bot_card_to_card(bot_card: dict[str, Any]) -> Any:
     """Reconstruct an engine Card from a balatrobot card dict.
+
     The balatrobot card format::
+
         {
           "id": int,
           "key": str,            # "H_A" for playing cards, "j_joker" for jokers, etc.
@@ -278,9 +277,9 @@ def _bot_card_to_card(bot_card: dict[str, Any]) -> Any:
 def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
     """Convert a balatrobot gamestate response to our game_state dict.
 
-    Maps the key fields for validation and comparison. Does NOT create
-    a fully functional game_state (no RNG, no Card objects) — this is
-    for read-only comparison purposes.
+    Reconstructs Card objects from the balatrobot card format so that
+    ``get_action_mask`` and ``encode_observation`` can consume the result
+    identically to an engine-produced game_state dict.
     """
     gs: dict[str, Any] = {}
 
@@ -303,6 +302,7 @@ def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
         "hands_played": br.get("hands_played", 0),
         "discards_used": br.get("discards_used", 0),
         "reroll_cost": br.get("reroll_cost", 5),
+        "free_rerolls": br.get("free_rerolls", 0),
     }
     gs["chips"] = br.get("chips", 0)
 
@@ -342,7 +342,7 @@ def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
             "score": score,
             "tag_name": bi.get("tag_name", ""),
         }
-         # Determine blind_on_deck from status
+        # Determine blind_on_deck from status
         if status == "SELECT":
             blind_on_deck = btype.capitalize()  # "Small", "Big", "Boss"
         elif status == "CURRENT":
@@ -351,6 +351,28 @@ def bot_state_to_game_state(bot: dict[str, Any]) -> dict[str, Any]:
             gs["blind"] = SimpleNamespace(chips=score, name=name)
 
     gs["blind_on_deck"] = blind_on_deck
+
+    # Shop (only relevant when phase == SHOP)
+    shop = bot.get("shop", {})
+    if shop:
+        gs["shop_cards"] = [_bot_card_to_card(c) for c in shop.get("cards", [])]
+        gs["shop_vouchers"] = [_bot_card_to_card(c) for c in shop.get("vouchers", [])]
+        gs["shop_boosters"] = [_bot_card_to_card(c) for c in shop.get("boosters", [])]
+    else:
+        gs["shop_cards"] = []
+        gs["shop_vouchers"] = []
+        gs["shop_boosters"] = []
+
+    # Pack state
+    pack = bot.get("pack", {})
+    if pack:
+        gs["pack_cards"] = [_bot_card_to_card(c) for c in pack.get("cards", [])]
+        gs["pack_choices_remaining"] = pack.get("choices_remaining", 0)
+        gs["pack_type"] = pack.get("type", "")
+    else:
+        gs["pack_cards"] = []
+        gs["pack_choices_remaining"] = 0
+        gs["pack_type"] = ""
 
     # Seed / deck / stake
     gs["seed"] = bot.get("seed", "")
