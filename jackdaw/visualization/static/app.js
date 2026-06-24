@@ -146,7 +146,23 @@ function renderHand(s, c){
   const canSel = isPlay && (s.legal_actions || []).some(a => a.type === 'PlayHand' || a.type === 'Discard');
   if(s.hand?.length) s.hand.forEach((card, i) => b.appendChild(playingCard(card, i, canSel)));
   else b.appendChild(mk('span', 'empty', 'No cards in hand'));
-  p.appendChild(b); c.appendChild(p);
+  p.appendChild(b);
+
+  // Hands played this round
+  const played = s.hands_played_round || [];
+  const hp = mk('div', 'hands-played');
+  hp.innerHTML = '<span class="hp-label">This round:</span> ';
+  if(played.length === 0){
+    hp.innerHTML += '<span class="hp-none">No hands played yet</span>';
+  } else {
+    played.forEach(h => {
+      const badge = mk('span', 'hp-badge');
+      badge.textContent = h.count > 1 ? `${h.name} ×${h.count}` : h.name;
+      hp.appendChild(badge);
+    });
+  }
+  p.appendChild(hp);
+  c.appendChild(p);
 }
 
 function renderBlindSelect(s, c){

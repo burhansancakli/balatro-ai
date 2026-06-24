@@ -201,6 +201,12 @@ body {
 .pb { padding: 10px; display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; }
 .pb.col { flex-direction: column; }
 
+/* ─── Hands Played This Round ────────────────────────────── */
+.hands-played { padding: 6px 10px 8px; border-top: 1px solid #2a3a2a; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.hp-label { font-size: 10px; color: #6b8f70; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
+.hp-none { font-size: 10px; color: #4a6a4a; font-style: italic; }
+.hp-badge { font-size: 10px; background: rgba(100,180,100,0.15); border: 1px solid rgba(100,180,100,0.35); color: #9dd89d; border-radius: 10px; padding: 2px 8px; white-space: nowrap; }
+
 /* ─── Playing Cards ──────────────────────────────────────── */
 .card {
   width: 58px;

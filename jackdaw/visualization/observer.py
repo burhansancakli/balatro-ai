@@ -239,6 +239,18 @@ def deserialize_action(data: dict) -> Action:
             raise ValueError(f"Unknown action type: {t!r}")
 
 
+def _hands_played_this_round(gs: dict[str, Any]) -> list[dict]:
+    """Return list of {name, count} for hands played at least once this round."""
+    hand_levels = gs.get("hand_levels")
+    if hand_levels is None:
+        return []
+    result = []
+    for ht, state in hand_levels._hands.items():
+        if state.played_this_round > 0:
+            result.append({"name": str(ht), "count": state.played_this_round})
+    return result
+
+
 def serialize_state(
     gs: dict[str, Any],
     legal_actions: list[Action] | None = None,
@@ -299,6 +311,8 @@ def serialize_state(
         # Stats
         "deck_remaining": len(gs.get("deck", [])),
         "discard_pile": len(gs.get("discard_pile", [])),
+        # Hands played this round (name → count, only played ones)
+        "hands_played_round": _hands_played_this_round(gs),
     }
 
 
