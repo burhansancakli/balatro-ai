@@ -21,7 +21,7 @@ from strategy import (
     parse_jokers_from_gamestate,
     strategy_coherence_reward,
 )
-from observations import gamestate_to_observation, OBS_SIZE, MAX_SHOP_SLOTS
+from observations import gamestate_to_observation, OBS_SIZE, MAX_SHOP_SLOTS, MAX_JOKER_SLOTS
 
 
 
@@ -156,15 +156,14 @@ class BalatroEnv(gym.Env):
         Includes: ante, round, money, blind target, jokers, shop cards.
 
     Action space:
-        Discrete(MAX_SHOP_SLOTS + 1)
-        0 = skip (don't buy anything)
-        1 = buy shop card at index 0
-        2 = buy shop card at index 1
-        3 = buy shop card at index 2
-        4 = buy shop card at index 3
+        Discrete(MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1)
+        0     = skip (don't do anything)
+        1-4   = buy shop card at index 0-3
+        5-9   = sell owned joker at index 0-4
 
     Strategy is fixed to MULT_BUILD.
-    The RL agent decides which shop joker to buy (or skip).
+    The RL agent decides which shop joker to buy (or skip) and
+    which owned joker to sell.
     After the shop decision, the calculator plays through hands
     automatically until the next shop.
     """
@@ -189,7 +188,7 @@ class BalatroEnv(gym.Env):
             shape=(OBS_SIZE,),
             dtype=np.float32,
         )
-        self.action_space = spaces.Discrete(MAX_SHOP_SLOTS + 1)  # 0=skip, 1-4=buy
+        self.action_space = spaces.Discrete(MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1)  # 0=skip, 1-4=buy, 5-9=sell
 
         self._current_ante: int  = 0
         self._steps: int         = 0
@@ -299,9 +298,19 @@ class BalatroEnv(gym.Env):
         joker_labels = parse_jokers_from_gamestate(gamestate)
         shop = gamestate.get("shop", {}) or {}
         shop_cards = shop.get("cards", []) or []
+        jokers = gamestate.get("jokers", {}) or {}
+        joker_cards = jokers.get("cards", []) or []
+
         action_label = "skip"
-        if action > 0 and action - 1 < len(shop_cards):
-            action_label = shop_cards[action - 1].get("label", f"card_{action-1}")
+        if 1 <= action <= MAX_SHOP_SLOTS and action - 1 < len(shop_cards):
+            action_label = f"buy:{shop_cards[action - 1].get('label', f'card_{action-1}')}"
+        elif MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
+            sell_idx = action - MAX_SHOP_SLOTS - 1
+            if sell_idx < len(joker_cards):
+                action_label = f"sell:{joker_cards[sell_idx].get('label', f'joker_{sell_idx}')}"
+            else:
+                action_label = f"sell:empty_{sell_idx}"
+
         return {
             "action":         action,
             "action_label":   action_label,
@@ -424,43 +433,63 @@ class BalatroEnv(gym.Env):
         return new_state, reward, hand_summary
 
     def _execute_shop_action(self, state: dict, action: int) -> float:
-        """Execute the agent's shop buy action.
-        action 0 = skip, 1-4 = buy shop card at that index.
-        Returns a small reward for buying to bootstrap learning.
+        """Execute the agent's shop action.
+        action 0 = skip, 1-4 = buy, 5-9 = sell joker.
         """
         if action == 0:
             return 0.0  # skip
 
-        shop = state.get("shop", {}) or {}
-        shop_cards = shop.get("cards", []) or []
-        buy_idx = action - 1
+        # ── Buy actions (1-4) ──────────────────────────────────
+        if 1 <= action <= MAX_SHOP_SLOTS:
+            shop = state.get("shop", {}) or {}
+            shop_cards = shop.get("cards", []) or []
+            buy_idx = action - 1
 
-        if buy_idx >= len(shop_cards):
-            return 0.0  # invalid index
+            if buy_idx >= len(shop_cards):
+                return 0.0  # invalid index
 
-        card = shop_cards[buy_idx]
-        label = card.get("label", "")
-        key   = card.get("key", "")
-        card_set = card.get("set", "")
+            card = shop_cards[buy_idx]
+            label = card.get("label", "")
+            key   = card.get("key", "")
+            card_set = card.get("set", "")
 
-        # Only allow buying actual jokers
-        if card_set != "JOKER" and not str(key).startswith("j_"):
-            return 0.0
+            # Only allow buying actual jokers
+            if card_set != "JOKER" and not str(key).startswith("j_"):
+                return 0.0
 
-        cost  = self._buy_cost(card)
-        money = int(state.get("money", 0) or 0)
-        if cost > money:
-            return 0.0  # can't afford
-        if not self._has_joker_slot(state):
-            return 0.0  # no room
+            cost  = self._buy_cost(card)
+            money = int(state.get("money", 0) or 0)
+            if cost > money:
+                return 0.0  # can't afford
+            if not self._has_joker_slot(state):
+                return 0.0  # no room
 
-        try:
-            self.client.call("buy", {"card": int(buy_idx)})
-            self._jokers_bought_episode += 1
-            return 0.1  # small bonus to bootstrap joker-buying behavior
-        except Exception as e:
-            print(f"[port {self.port}] Buy failed for '{label}' at index {buy_idx}: {e}")
-            return 0.0
+            try:
+                self.client.call("buy", {"card": int(buy_idx)})
+                self._jokers_bought_episode += 1
+                return 0.0 
+            except Exception as e:
+                print(f"[port {self.port}] Buy failed for '{label}' at index {buy_idx}: {e}")
+                return 0.0
+
+        # ── Sell actions (5-9) ─────────────────────────────────
+        if MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
+            sell_idx = action - MAX_SHOP_SLOTS - 1
+            jokers = state.get("jokers", {}) or {}
+            joker_cards = jokers.get("cards", []) or []
+
+            if sell_idx >= len(joker_cards):
+                return 0.0  # no joker at that slot
+
+            label = joker_cards[sell_idx].get("label", f"joker_{sell_idx}")
+            try:
+                self.client.call("sell", {"joker": int(sell_idx)})
+                return -0.05  # small penalty to discourage random selling
+            except Exception as e:
+                print(f"[port {self.port}] Sell failed for '{label}' at index {sell_idx}: {e}")
+                return 0.0
+
+        return 0.0  # unknown action
 
 
     def _has_joker_slot(self, state: dict) -> bool:
