@@ -33,6 +33,7 @@ from jackdaw.env.game_interface import (
     DirectAdapter,
     GameAdapter,
     GameState,
+    SimplifiedDirectAdapter,
 )
 from jackdaw.env.game_spec import (
     GameActionMask,
@@ -65,6 +66,7 @@ __all__ = [
     "D_PLAYING_CARD",
     "D_SHOP",
     "DirectAdapter",
+    "SimplifiedDirectAdapter",
     "FactoredAction",
     "GameActionMask",
     "GameAdapter",

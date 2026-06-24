@@ -167,6 +167,10 @@ def _handle_select_blind(gs: dict[str, Any]) -> dict[str, Any]:
     rr["blind_states"][blind_on_deck] = "Current"
     rr["blind"] = blind
 
+    # Simplified env: disable boss blind effects before they can fire
+    if gs.get("simplified") and blind.boss:
+        blind.disabled = True
+
     # ------------------------------------------------------------------
     # 2. Fire joker setting_blind context
     # ------------------------------------------------------------------

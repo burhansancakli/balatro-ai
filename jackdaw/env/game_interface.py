@@ -185,6 +185,50 @@ class DirectAdapter:
 
 
 # ---------------------------------------------------------------------------
+# SimplifiedDirectAdapter — DirectAdapter with simplified env restrictions
+# ---------------------------------------------------------------------------
+
+
+class SimplifiedDirectAdapter(DirectAdapter):
+    """DirectAdapter variant that applies simplified-env restrictions.
+
+    Mirrors the Lua mod: joker whitelist, no shop vouchers/boosters,
+    fixed hand_size/hands/discards, boss blinds disabled, no SkipBlind.
+
+    Drop-in replacement for DirectAdapter::
+
+        env = BalatroGymnasiumEnv(adapter_factory=SimplifiedDirectAdapter)
+    """
+
+    def reset(
+        self,
+        back_key: str,
+        stake: int,
+        seed: str,
+        *,
+        challenge: dict[str, Any] | None = None,
+    ) -> GameState:
+        from jackdaw.engine.simplified import apply_to_run
+
+        super().reset(back_key, stake, seed, challenge=challenge)
+        apply_to_run(self._gs)
+        return _snapshot(self._gs)
+
+    def step(self, action: Action) -> GameState:
+        from jackdaw.engine.simplified import apply_to_shop
+
+        state = super().step(action)
+        if self._gs.get("phase") == GamePhase.SHOP:
+            apply_to_shop(self._gs)
+        return _snapshot(self._gs)
+
+    def get_legal_actions(self) -> list[Action]:
+        from jackdaw.engine.simplified import filter_legal_actions
+
+        return filter_legal_actions(super().get_legal_actions())
+
+
+# ---------------------------------------------------------------------------
 # BridgeAdapter — wraps any Backend (SimBackend or LiveBackend)
 # ---------------------------------------------------------------------------
 

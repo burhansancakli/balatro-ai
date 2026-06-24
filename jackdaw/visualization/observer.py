@@ -416,10 +416,24 @@ class GameObserver:
         *,
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
+        simplified: bool = False,
     ) -> dict[str, Any]:
         """Run simulate_run() with live rendering after every step."""
+        from jackdaw.engine.simplified import (
+            apply_to_run,
+            apply_to_shop,
+            filter_legal_actions,
+        )
+
         gs = initialize_run(back_key, stake, seed, challenge=challenge)
-        self.emit(gs, legal_actions=get_legal_actions(gs))
+        if simplified:
+            apply_to_run(gs)
+
+        def _legal(gs: dict) -> list[Action]:
+            actions = get_legal_actions(gs)
+            return filter_legal_actions(actions) if simplified else actions
+
+        self.emit(gs, legal_actions=_legal(gs))
 
         actions_taken = 0
         while actions_taken < max_actions:
@@ -429,7 +443,7 @@ class GameObserver:
             if gs.get("won") and phase == GamePhase.SHOP:
                 break
 
-            legal = get_legal_actions(gs)
+            legal = _legal(gs)
             if not legal:
                 break
 
@@ -439,8 +453,11 @@ class GameObserver:
             except IllegalActionError:
                 break
 
+            if simplified and gs.get("phase") == GamePhase.SHOP:
+                apply_to_shop(gs)
+
             actions_taken += 1
-            self.emit(gs, action=action, legal_actions=get_legal_actions(gs))
+            self.emit(gs, action=action, legal_actions=_legal(gs))
 
             if self.speed > 0:
                 time.sleep(self.speed)
@@ -461,12 +478,25 @@ class GameObserver:
         *,
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
+        simplified: bool = False,
     ) -> dict[str, Any]:
         """Human-driven mode: game waits for the browser to send each action."""
         if not self.use_web:
             raise RuntimeError("Play mode requires --web to be enabled.")
 
+        from jackdaw.engine.simplified import (
+            apply_to_run,
+            apply_to_shop,
+            filter_legal_actions,
+        )
+
         gs = initialize_run(back_key, stake, seed, challenge=challenge)
+        if simplified:
+            apply_to_run(gs)
+
+        def _legal(gs: dict) -> list[Action]:
+            actions = get_legal_actions(gs)
+            return filter_legal_actions(actions) if simplified else actions
 
         actions_taken = 0
         while actions_taken < max_actions:
@@ -476,7 +506,7 @@ class GameObserver:
             if gs.get("won") and phase == GamePhase.SHOP:
                 break
 
-            legal = get_legal_actions(gs)
+            legal = _legal(gs)
             if not legal:
                 break
 
@@ -487,6 +517,8 @@ class GameObserver:
             try:
                 action = deserialize_action(action_data)
                 step(gs, action)
+                if simplified and gs.get("phase") == GamePhase.SHOP:
+                    apply_to_shop(gs)
                 actions_taken += 1
             except (ValueError, IllegalActionError):
                 # Re-emit same state so browser can try again

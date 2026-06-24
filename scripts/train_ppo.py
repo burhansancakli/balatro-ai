@@ -19,7 +19,7 @@ import numpy as np
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import BaseCallback
 
-from jackdaw.env.game_interface import DirectAdapter
+from jackdaw.env.game_interface import DirectAdapter, SimplifiedDirectAdapter
 from jackdaw.env.gymnasium_wrapper import BalatroGymnasiumEnv
 
 
@@ -52,9 +52,14 @@ class BalatroMetricsCallback(BaseCallback):
         self._wins.clear()
 
 
-def make_env(seed: int = 0, max_steps: int = 10_000) -> BalatroGymnasiumEnv:
+def make_env(
+    seed: int = 0,
+    max_steps: int = 10_000,
+    simplified: bool = False,
+) -> BalatroGymnasiumEnv:
+    factory = SimplifiedDirectAdapter if simplified else DirectAdapter
     return BalatroGymnasiumEnv(
-        adapter_factory=DirectAdapter,
+        adapter_factory=factory,
         max_steps=max_steps,
         seed_prefix=f"PPO_{seed}",
         reward_shaping=True,
@@ -67,12 +72,21 @@ def main() -> None:
     parser.add_argument("--log-dir", type=str, default="runs/balatro_ppo")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=10_000)
+    parser.add_argument(
+        "--simplified",
+        action="store_true",
+        default=False,
+        help=(
+            "Use simplified environment: joker whitelist, no vouchers/boosters, "
+            "fixed 4 hands/4 discards, boss blinds disabled"
+        ),
+    )
     args = parser.parse_args()
 
     log_path = Path(args.log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
-    env = make_env(seed=args.seed, max_steps=args.max_steps)
+    env = make_env(seed=args.seed, max_steps=args.max_steps, simplified=args.simplified)
 
     model = MaskablePPO(
         "MultiInputPolicy",
@@ -86,7 +100,8 @@ def main() -> None:
         clip_range=0.15,
     )
 
-    print(f"Training for {args.total_timesteps} timesteps...")
+    env_label = "simplified" if args.simplified else "standard"
+    print(f"Training for {args.total_timesteps} timesteps  [{env_label} env]...")
     try:
         model.learn(total_timesteps=args.total_timesteps, callback=BalatroMetricsCallback())
     except KeyboardInterrupt:

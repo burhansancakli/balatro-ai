@@ -132,6 +132,16 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PORT",
         help="Port for the web dashboard (default: 8765)",
     )
+    p_run.add_argument(
+        "--env",
+        choices=("standard", "simplified"),
+        default="standard",
+        help=(
+            "standard = full game | "
+            "simplified = joker whitelist, no vouchers/boosters, "
+            "fixed 4 hands/4 discards, boss blinds disabled (default: standard)"
+        ),
+    )
 
     return parser
 
@@ -175,19 +185,22 @@ def _run_command(args: argparse.Namespace) -> None:
         port=args.web_port,
     )
 
+    simplified = args.env == "simplified"
+
     with observer:
         if args.mode == "play":
             if not args.web:
                 print("Error: play mode requires the web dashboard (remove --no-web).")
                 sys.exit(1)
             url = f"http://127.0.0.1:{args.web_port}/?mode=play"
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}")
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}")
             print(f"  Opening browser → {url}\n")
             webbrowser.open(url)
             result = observer.simulate_play(
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
+                simplified=simplified,
             )
         else:
             # Watch mode
@@ -208,12 +221,16 @@ def _run_command(args: argparse.Namespace) -> None:
                 print(f"  Opening browser → {url}\n")
                 webbrowser.open(url)
 
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Agent: {args.agent}\n")
+            print(
+                f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}"
+                f"  |  Agent: {args.agent}  |  Env: {args.env}\n"
+            )
             result = observer.simulate_watched(
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
                 agent=agent,
+                simplified=simplified,
             )
 
         # Final summary (inside `with` so the web server is still alive)
