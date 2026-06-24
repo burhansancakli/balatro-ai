@@ -239,6 +239,39 @@ def deserialize_action(data: dict) -> Action:
             raise ValueError(f"Unknown action type: {t!r}")
 
 
+def _serialize_hand_history(gs: dict[str, Any]) -> list[dict]:
+    """Serialize full hand history from gs['hand_history']."""
+    raw = gs.get("hand_history", [])
+    out = []
+    destroyed_ids: set[int]
+    for entry in raw:
+        destroyed_ids = {id(c) for c in entry.get("destroyed_cards", [])}
+        scoring_ids = {id(c) for c in entry.get("scoring_cards", [])}
+        cards = []
+        for c in entry.get("cards", []):
+            s = _serialize_card(c)
+            if s:
+                s["scored"] = id(c) in scoring_ids
+                s["destroyed"] = id(c) in destroyed_ids
+                cards.append(s)
+        jokers = [_serialize_card(j) for j in entry.get("jokers", [])]
+        jokers = [j for j in jokers if j]
+        out.append({
+            "ante": entry["ante"],
+            "round": entry["round"],
+            "hand_num": entry["hand_num"],
+            "hand_type": entry["hand_type"],
+            "cards": cards,
+            "jokers": jokers,
+            "chips": entry["chips"],
+            "mult": entry["mult"],
+            "total": entry["total"],
+            "dollars_earned": entry.get("dollars_earned", 0),
+            "debuffed": entry.get("debuffed", False),
+        })
+    return out
+
+
 def _hands_played_this_round(gs: dict[str, Any]) -> list[dict]:
     """Return list of {name, count} for hands played at least once this round."""
     hand_levels = gs.get("hand_levels")
@@ -313,6 +346,8 @@ def serialize_state(
         "discard_pile": len(gs.get("discard_pile", [])),
         # Hands played this round (name → count, only played ones)
         "hands_played_round": _hands_played_this_round(gs),
+        # Full hand history for the entire run
+        "hand_history": _serialize_hand_history(gs),
     }
 
 

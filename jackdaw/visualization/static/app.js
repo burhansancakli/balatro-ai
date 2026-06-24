@@ -84,6 +84,7 @@ function render(s){
   renderScore(s);
   renderSidebar(s);
   renderMain(s);
+  renderHandHistory(s);
   renderActions(s);
   renderLog(s);
 }
@@ -304,6 +305,80 @@ function buildShopActions(s, row, legal){
 
 function btnCls(t){
   return ({SelectBlind:'gold',CashOut:'success',NextRound:'success',SellCard:'danger'})[t]||'';
+}
+
+/* ── Hand History ────────────────────────────────────────── */
+function renderHandHistory(s){
+  const sec = $('hist'); sec.innerHTML = '';
+  const entries = s.hand_history || [];
+  if(!entries.length) return;
+
+  const hdr = mk('div', 'hh-header');
+  hdr.innerHTML = `Hand History <span style="color:#4a6a4a;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;">(${entries.length} played)</span>`;
+  sec.appendChild(hdr);
+
+  const scroll = mk('div', 'hh-scroll');
+  // Show newest first
+  [...entries].reverse().forEach(e => {
+    const card = mk('div', 'hh-entry' + (e.debuffed ? ' debuffed' : ''));
+
+    // Meta: A1·R1·H2
+    const meta = mk('div', 'hh-meta');
+    meta.innerHTML = `<span class="hh-tag">A${e.ante}</span><span class="hh-tag">R${e.round}</span><span class="hh-tag">H${e.hand_num}</span>`;
+    card.appendChild(meta);
+
+    // Hand type
+    const ht = mk('div', 'hh-type');
+    ht.textContent = e.debuffed ? `${e.hand_type} ✗` : e.hand_type;
+    card.appendChild(ht);
+
+    // Score
+    const sc = mk('div', 'hh-score');
+    sc.innerHTML = `<span class="hh-chips">${fmt(e.chips)}</span><span class="hh-dim">chips ×</span><span class="hh-mult">${fmt(e.mult)}</span><span class="hh-dim">mult =</span><span class="hh-total">${fmt(e.total)}</span>`;
+    card.appendChild(sc);
+
+    // Cards played
+    if(e.cards?.length){
+      const row = mk('div', 'hh-cards');
+      e.cards.forEach(c => {
+        const chip = mk('span', 'hh-card' + (c.red ? ' red' : '') + (c.scored ? ' scored' : '') + (c.destroyed ? ' destroyed' : ''));
+        let label = c.label || c.name || c.key || '?';
+        if(c.enhancement) label += `[${c.enhancement}]`;
+        if(c.edition && c.edition !== 'base') label += `{${c.edition}}`;
+        if(c.seal) label += `·${c.seal}`;
+        chip.textContent = label;
+        row.appendChild(chip);
+      });
+      card.appendChild(row);
+    }
+
+    // Active jokers
+    if(e.jokers?.length){
+      const jrow = mk('div', 'hh-jokers');
+      e.jokers.forEach(j => {
+        const jc = mk('span', 'hh-joker');
+        jc.textContent = j.name || j.key || '?';
+        jrow.appendChild(jc);
+      });
+      card.appendChild(jrow);
+    }
+
+    // Dollars earned
+    if(e.dollars_earned > 0){
+      const d = mk('div', 'hh-dollars');
+      d.textContent = `+$${e.dollars_earned}`;
+      card.appendChild(d);
+    }
+
+    if(e.debuffed){
+      const db = mk('div', 'hh-debuffed');
+      db.textContent = 'Debuffed by boss blind';
+      card.appendChild(db);
+    }
+
+    scroll.appendChild(card);
+  });
+  sec.appendChild(scroll);
 }
 
 /* ── Log ─────────────────────────────────────────────────── */

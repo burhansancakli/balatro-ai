@@ -595,6 +595,23 @@ def _handle_play_hand(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str,
     # ------------------------------------------------------------------
     # 7. Process scoring side-effects
     # ------------------------------------------------------------------
+    # Record hand history entry before destruction modifies played
+    gs.setdefault("hand_history", []).append({
+        "ante": gs.get("round_resets", {}).get("ante", 1),
+        "round": gs.get("round", 0),
+        "hand_num": cr.get("hands_played", 0),
+        "hand_type": result.hand_type,
+        "cards": list(played),
+        "scoring_cards": list(result.scoring_cards),
+        "destroyed_cards": list(result.cards_destroyed),
+        "jokers": list(jokers),
+        "chips": result.chips,
+        "mult": result.mult,
+        "total": result.total,
+        "dollars_earned": result.dollars_earned,
+        "debuffed": result.debuffed,
+    })
+
     # Accumulate chips
     gs["chips"] = gs.get("chips", 0) + result.total
     gs["last_score_result"] = result

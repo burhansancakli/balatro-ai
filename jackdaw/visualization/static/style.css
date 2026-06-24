@@ -43,12 +43,13 @@ body {
 /* ─── Layout ─────────────────────────────────────────────── */
 #app {
   display: grid;
-  grid-template-rows: 50px 54px 1fr auto 90px;
+  grid-template-rows: 50px 54px 1fr auto auto 90px;
   grid-template-columns: 190px 1fr;
   grid-template-areas:
     "hdr  hdr"
     "scr  scr"
     "side main"
+    "hist hist"
     "acts acts"
     "log  log";
   gap: 8px;
@@ -407,7 +408,54 @@ body {
 
 .card, .jcard, .icard { animation: pop .14s ease; }
 
+/* ─── Hand History ───────────────────────────────────────── */
+#hist {
+  grid-area: hist;
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 9px;
+  overflow: hidden;
+}
+#hist:empty { display: none; }
+.hh-header {
+  padding: 5px 12px 5px 14px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+  color: #6b8f70; background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: center; gap: 8px;
+}
+.hh-scroll { overflow-x: auto; padding: 8px 10px; display: flex; gap: 8px; align-items: flex-start; }
+.hh-entry {
+  flex-shrink: 0; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 7px; padding: 7px 9px; min-width: 160px; max-width: 260px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.hh-entry.debuffed { border-color: rgba(220,60,60,0.4); background: rgba(220,60,60,0.06); }
+.hh-meta { font-size: 9.5px; color: #6b8f70; display: flex; gap: 5px; align-items: center; }
+.hh-meta .hh-tag { background: rgba(100,140,100,0.18); border: 1px solid rgba(100,140,100,0.3); border-radius: 4px; padding: 0px 5px; color: #9dd89d; }
+.hh-type { font-size: 12px; font-weight: 700; color: #f0c040; }
+.hh-score { font-size: 11px; color: #a0c8a0; display: flex; gap: 4px; align-items: baseline; }
+.hh-score .hh-chips { color: #5bc8f5; }
+.hh-score .hh-mult  { color: #f87171; }
+.hh-score .hh-total { color: #f0c040; font-weight: 700; }
+.hh-score .hh-dim   { color: #4a6a4a; font-size: 10px; }
+.hh-cards { display: flex; flex-wrap: wrap; gap: 3px; }
+.hh-card {
+  font-size: 11px; font-weight: 600; border-radius: 4px;
+  padding: 2px 5px; border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06); color: #e0e6e0; white-space: nowrap;
+}
+.hh-card.red { color: #f87171; }
+.hh-card.scored { border-color: rgba(240,192,64,0.5); background: rgba(240,192,64,0.1); }
+.hh-card.destroyed { opacity: 0.45; text-decoration: line-through; }
+.hh-jokers { display: flex; flex-wrap: wrap; gap: 3px; }
+.hh-joker {
+  font-size: 9.5px; border-radius: 4px; padding: 1px 5px;
+  background: rgba(100,140,100,0.15); border: 1px solid rgba(100,140,100,0.3); color: #9dd89d;
+}
+.hh-dollars { font-size: 10px; color: #c9952a; }
+.hh-debuffed { font-size: 9.5px; color: #f87171; font-style: italic; }
+
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 640px) {
-  #app { grid-template-columns: 1fr; height: auto; grid-template-areas: "hdr" "scr" "side" "main" "acts" "log"; }
+  #app { grid-template-columns: 1fr; height: auto; grid-template-areas: "hdr" "scr" "side" "main" "hist" "acts" "log"; }
 }
