@@ -12,6 +12,8 @@ Usage::
     jackdaw run --mode watch --agent greedy --seed SEED42 --deck b_red
     jackdaw run --mode watch --no-web         # terminal only
     jackdaw run --mode watch --no-terminal    # browser only
+    jackdaw run --mode watch --host 127.0.0.1 # live mode against real Balatro
+    jackdaw run --mode watch --env simplified  # restricted training environment
 """
 
 from __future__ import annotations
@@ -74,7 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument(
         "--agent",
-        choices=("random", "greedy", "ppo"),
+        choices=("random", "greedy", "smart", "ppo"),
         default="random",
         help="Agent to use in watch mode (default: random)",
     )
@@ -133,6 +135,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Port for the web dashboard (default: 8765)",
     )
     p_run.add_argument(
+        "--host",
+        default=None,
+        metavar="HOST",
+        help="Connect to live Balatro via balatrobot (e.g. 127.0.0.1)",
+    )
+    p_run.add_argument(
+        "--port",
+        type=int,
+        default=12346,
+        metavar="PORT",
+        help="Balatrobot port (default: 12346, used with --host)",
+    )
+    p_run.add_argument(
         "--env",
         choices=("standard", "simplified"),
         default="standard",
@@ -178,6 +193,18 @@ def _run_command(args: argparse.Namespace) -> None:
     # Resolve seed
     seed = args.seed or f"SEED{_random.randint(1000, 9999)}"
 
+    # Build adapter for live mode if --host is provided
+    adapter = None
+    live_mode = args.host is not None
+    if live_mode:
+        from jackdaw.bridge.backend import LiveBackend
+        from jackdaw.env.game_interface import BridgeAdapter
+
+        backend = LiveBackend(host=args.host, port=args.port)
+        adapter = BridgeAdapter(backend)
+        adapter.reset(back_key=args.deck, stake=args.stake, seed=seed)
+        print(f"  LIVE MODE — connected to {args.host}:{args.port}")
+
     observer = GameObserver(
         use_terminal=args.terminal,
         use_web=args.web,
@@ -193,7 +220,8 @@ def _run_command(args: argparse.Namespace) -> None:
                 print("Error: play mode requires the web dashboard (remove --no-web).")
                 sys.exit(1)
             url = f"http://127.0.0.1:{args.web_port}/?mode=play"
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}")
+            mode_label = "LIVE" if live_mode else "SIM"
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}  |  Mode: {mode_label}")
             print(f"  Opening browser → {url}\n")
             webbrowser.open(url)
             result = observer.simulate_play(
@@ -201,6 +229,7 @@ def _run_command(args: argparse.Namespace) -> None:
                 stake=args.stake,
                 seed=seed,
                 simplified=simplified,
+                adapter=adapter,
             )
         else:
             # Watch mode
@@ -214,6 +243,9 @@ def _run_command(args: argparse.Namespace) -> None:
                 agent = make_ppo_agent(args.model)
             elif args.agent == "greedy":
                 agent = greedy_play_agent
+            elif args.agent == "smart":
+                from jackdaw.cli.smart_agent import smart_agent
+                agent = smart_agent
             else:
                 agent = random_agent
             if args.web:
@@ -221,9 +253,10 @@ def _run_command(args: argparse.Namespace) -> None:
                 print(f"  Opening browser → {url}\n")
                 webbrowser.open(url)
 
+            mode_label = "LIVE" if live_mode else "SIM"
             print(
                 f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}"
-                f"  |  Agent: {args.agent}  |  Env: {args.env}\n"
+                f"  |  Agent: {args.agent}  |  Env: {args.env}  |  Mode: {mode_label}\n"
             )
             result = observer.simulate_watched(
                 back_key=args.deck,
@@ -231,6 +264,7 @@ def _run_command(args: argparse.Namespace) -> None:
                 seed=seed,
                 agent=agent,
                 simplified=simplified,
+                adapter=adapter,
             )
 
         # Final summary (inside `with` so the web server is still alive)
@@ -238,7 +272,7 @@ def _run_command(args: argparse.Namespace) -> None:
         rounds = result.get("round", 0)
         actions = result.get("actions_taken", 0)
         dollars = result.get("dollars", 0)
-        status = "WON 🏆" if won else "GAME OVER"
+        status = "WON" if won else "GAME OVER"
         print(f"\n  {status}  ·  Rounds: {rounds}  ·  Actions: {actions}  ·  Final $: {dollars}\n")
 
         if args.web:

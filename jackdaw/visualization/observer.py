@@ -417,17 +417,27 @@ class GameObserver:
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
         simplified: bool = False,
+        adapter: Any = None,
     ) -> dict[str, Any]:
-        """Run simulate_run() with live rendering after every step."""
+        """Run simulate_run() with live rendering after every step.
+
+        If *adapter* is provided (e.g. BridgeAdapter), use it instead of
+        the in-process engine — enables live mode against real Balatro.
+        If *simplified* is True, apply simplified-env restrictions (Python
+        engine only; the Lua mod handles this on the real-game side).
+        """
         from jackdaw.engine.simplified import (
             apply_to_run,
             apply_to_shop,
             filter_legal_actions,
         )
 
-        gs = initialize_run(back_key, stake, seed, challenge=challenge)
-        if simplified:
-            apply_to_run(gs)
+        if adapter is not None:
+            gs = adapter.raw_state
+        else:
+            gs = initialize_run(back_key, stake, seed, challenge=challenge)
+            if simplified:
+                apply_to_run(gs)
 
         def _legal(gs: dict) -> list[Action]:
             actions = get_legal_actions(gs)
@@ -449,7 +459,11 @@ class GameObserver:
 
             action = agent(gs, legal)
             try:
-                step(gs, action)
+                if adapter is not None:
+                    adapter.step(action)
+                    gs = adapter.raw_state
+                else:
+                    step(gs, action)
             except IllegalActionError:
                 break
 
@@ -479,8 +493,15 @@ class GameObserver:
         challenge: dict[str, Any] | None = None,
         max_actions: int = 10_000,
         simplified: bool = False,
+        adapter: Any = None,
     ) -> dict[str, Any]:
-        """Human-driven mode: game waits for the browser to send each action."""
+        """Human-driven mode: game waits for the browser to send each action.
+
+        If *adapter* is provided (e.g. BridgeAdapter), use it instead of
+        the in-process engine — enables live mode against real Balatro.
+        If *simplified* is True, apply simplified-env restrictions (Python
+        engine only; the Lua mod handles this on the real-game side).
+        """
         if not self.use_web:
             raise RuntimeError("Play mode requires --web to be enabled.")
 
@@ -490,9 +511,12 @@ class GameObserver:
             filter_legal_actions,
         )
 
-        gs = initialize_run(back_key, stake, seed, challenge=challenge)
-        if simplified:
-            apply_to_run(gs)
+        if adapter is not None:
+            gs = adapter.raw_state
+        else:
+            gs = initialize_run(back_key, stake, seed, challenge=challenge)
+            if simplified:
+                apply_to_run(gs)
 
         def _legal(gs: dict) -> list[Action]:
             actions = get_legal_actions(gs)
@@ -516,9 +540,13 @@ class GameObserver:
             action_data = self._action_queue.get()
             try:
                 action = deserialize_action(action_data)
-                step(gs, action)
-                if simplified and gs.get("phase") == GamePhase.SHOP:
-                    apply_to_shop(gs)
+                if adapter is not None:
+                    adapter.step(action)
+                    gs = adapter.raw_state
+                else:
+                    step(gs, action)
+                    if simplified and gs.get("phase") == GamePhase.SHOP:
+                        apply_to_shop(gs)
                 actions_taken += 1
             except (ValueError, IllegalActionError):
                 # Re-emit same state so browser can try again
