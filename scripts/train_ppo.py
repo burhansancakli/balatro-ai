@@ -56,14 +56,19 @@ def make_env(
     seed: int = 0,
     max_steps: int = 10_000,
     simplified: bool = False,
+    record_dir: str | None = None,
 ) -> BalatroGymnasiumEnv:
     factory = SimplifiedDirectAdapter if simplified else DirectAdapter
-    return BalatroGymnasiumEnv(
+    env = BalatroGymnasiumEnv(
         adapter_factory=factory,
         max_steps=max_steps,
         seed_prefix=f"PPO_{seed}",
         reward_shaping=True,
     )
+    if record_dir:
+        from jackdaw.env.episode_recorder import EpisodeRecorderWrapper
+        env = EpisodeRecorderWrapper(env, record_dir)
+    return env
 
 
 def main() -> None:
@@ -81,12 +86,23 @@ def main() -> None:
             "fixed 4 hands/4 discards, boss blinds disabled"
         ),
     )
+    parser.add_argument(
+        "--record-dir",
+        type=str,
+        default=None,
+        help="Directory to write episode trajectory logs (JSONL). Disabled if not set.",
+    )
     args = parser.parse_args()
 
     log_path = Path(args.log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
-    env = make_env(seed=args.seed, max_steps=args.max_steps, simplified=args.simplified)
+    env = make_env(
+        seed=args.seed,
+        max_steps=args.max_steps,
+        simplified=args.simplified,
+        record_dir=args.record_dir,
+    )
 
     model = MaskablePPO(
         "MultiInputPolicy",
@@ -101,7 +117,8 @@ def main() -> None:
     )
 
     env_label = "simplified" if args.simplified else "standard"
-    print(f"Training for {args.total_timesteps} timesteps  [{env_label} env]...")
+    rec_note = f"  recording → {args.record_dir}" if args.record_dir else ""
+    print(f"Training for {args.total_timesteps} timesteps  [{env_label} env]{rec_note}...")
     try:
         model.learn(total_timesteps=args.total_timesteps, callback=BalatroMetricsCallback())
     except KeyboardInterrupt:

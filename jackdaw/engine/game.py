@@ -105,6 +105,33 @@ def step(game_state: dict[str, Any], action: Action) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Action logging helper
+# ---------------------------------------------------------------------------
+
+
+def _log_action(gs: dict[str, Any], entry: dict[str, Any]) -> None:
+    """Append a lightweight action entry to gs['action_log']."""
+    rr = gs.get("round_resets", {})
+    entry.setdefault("ante", rr.get("ante", 1))
+    entry.setdefault("round", gs.get("round", 0))
+    entry.setdefault("dollars", gs.get("dollars", 0))
+    gs.setdefault("action_log", []).append(entry)
+
+
+def _card_label(card: Any) -> str:
+    """Return a short human-readable label for a card."""
+    base = getattr(card, "base", None)
+    if base is not None:
+        rank = getattr(base, "rank", None)
+        suit = getattr(base, "suit", None)
+        r = rank.value if hasattr(rank, "value") else str(rank)
+        s = suit.value if hasattr(suit, "value") else str(suit)
+        return f"{r[:1] if len(r) > 2 else r}{s[:1]}"
+    ability = card.ability if isinstance(card.ability, dict) else {}
+    return ability.get("name", getattr(card, "center_key", "?"))
+
+
+# ---------------------------------------------------------------------------
 # Phase validation helper
 # ---------------------------------------------------------------------------
 
@@ -244,6 +271,12 @@ def _handle_select_blind(gs: dict[str, Any]) -> dict[str, Any]:
     # 8. Phase → SELECTING_HAND
     # ------------------------------------------------------------------
     gs["phase"] = GamePhase.SELECTING_HAND
+    _log_action(gs, {
+        "type": "blind",
+        "name": blind.name,
+        "chips": blind.chips,
+        "boss": blind.boss,
+    })
     return gs
 
 
@@ -724,6 +757,15 @@ def _handle_play_hand(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str,
                 if 0 <= idx < len(hand):
                     hand[idx].ability["forced_selection"] = True
 
+    _log_action(gs, {
+        "type": "play",
+        "hand_type": result.hand_type,
+        "total": result.total,
+        "chips": result.chips,
+        "mult": result.mult,
+        "cards": [_card_label(c) for c in played],
+        "jokers": [_card_label(j) for j in jokers],
+    })
     return gs
 
 
@@ -939,6 +981,10 @@ def _handle_discard(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str, A
             if 0 <= idx < len(hand):
                 hand[idx].ability["forced_selection"] = True
 
+    _log_action(gs, {
+        "type": "discard",
+        "cards": [_card_label(c) for c in discarded],
+    })
     return gs
 
 
@@ -1036,6 +1082,13 @@ def _handle_buy_card(gs: dict[str, Any], idx: int) -> dict[str, Any]:
     if added_playing_card:
         _fire_shop_joker_context(gs, playing_card_added=True, cards=[card])
 
+    ability = card.ability if isinstance(card.ability, dict) else {}
+    _log_action(gs, {
+        "type": "buy",
+        "card": _card_label(card),
+        "card_set": _get_card_set(card),
+        "cost": card.cost,
+    })
     return gs
 
 
@@ -1062,6 +1115,11 @@ def _handle_sell_card(gs: dict[str, Any], area: str, idx: int) -> dict[str, Any]
     # Fire selling_card joker context (Campfire +xMult per card sold)
     _fire_shop_joker_context(gs, selling_card=True)
 
+    _log_action(gs, {
+        "type": "sell",
+        "card": _card_label(card),
+        "gold": card.sell_cost,
+    })
     return gs
 
 

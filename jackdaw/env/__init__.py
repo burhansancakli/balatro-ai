@@ -40,6 +40,7 @@ from jackdaw.env.game_spec import (
     GameObservation,
     GameSpec,
 )
+from jackdaw.env.episode_recorder import EpisodeRecorderWrapper
 from jackdaw.env.gymnasium_wrapper import BalatroGymnasiumEnv
 from jackdaw.env.observation import (
     D_CONSUMABLE,
@@ -60,6 +61,7 @@ __all__ = [
     "BalatroGymnasiumEnv",
     "BridgeAdapter",
     "ConsumableTargetSpec",
+    "EpisodeRecorderWrapper",
     "D_CONSUMABLE",
     "D_GLOBAL",
     "D_JOKER",

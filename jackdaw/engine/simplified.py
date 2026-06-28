@@ -92,8 +92,10 @@ def apply_to_shop(gs: dict[str, Any]) -> None:
 
     Steps:
     1. Clear vouchers and boosters.
-    2. Keep only cards already in the allowed-joker whitelist.
-    3. Fill any remaining slots with random picks from ALLOWED_JOKERS,
+    2. Determine shop size: 1–3 jokers, picked randomly once per shop visit
+       (keyed by ante+round so repeated calls within the same visit are stable).
+    3. Keep only cards already in the allowed-joker whitelist.
+    4. Fill any remaining slots with random picks from ALLOWED_JOKERS,
        avoiding duplicates already present in the shop.
 
     Safe to call after every step when in SHOP phase — it is idempotent.
@@ -102,12 +104,28 @@ def apply_to_shop(gs: dict[str, Any]) -> None:
     gs["shop_vouchers"] = []
     gs["shop_boosters"] = []
 
-    shop_max: int = gs.get("shop", {}).get("joker_max", 2)
+    rng = gs.get("rng")
+    ante: int = gs.get("round_resets", {}).get("ante", 1)
+    round_num: int = gs.get("round", 0)
+
+    # Determine shop size once per shop visit (stable across repeated calls)
+    cache_key = (ante, round_num)
+    if gs.get("_simp_shop_max_key") != cache_key:
+        if rng is not None:
+            seed_val = rng.seed(f"simp_shop_size_{ante}_{round_num}")
+            shop_max, _ = rng.element([1, 2, 3], seed_val)
+            shop_max = int(shop_max)
+        else:
+            import random
+            shop_max = random.randint(1, 3)
+        gs["_simp_shop_max"] = shop_max
+        gs["_simp_shop_max_key"] = cache_key
+    else:
+        shop_max = int(gs.get("_simp_shop_max", 2))
+
     kept = [c for c in gs.get("shop_cards", []) if _is_allowed_joker(c)]
 
     # Fill empty slots — avoid duplicating keys already in the shop
-    rng = gs.get("rng")
-    ante: int = gs.get("round_resets", {}).get("ante", 1)
     slot = 0
     while len(kept) < shop_max:
         used_keys = {getattr(c, "center_key", "") for c in kept}

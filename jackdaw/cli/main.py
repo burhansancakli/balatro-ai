@@ -14,6 +14,9 @@ Usage::
     jackdaw run --mode watch --no-terminal    # browser only
     jackdaw run --mode watch --host 127.0.0.1 # live mode against real Balatro
     jackdaw run --mode watch --env simplified  # restricted training environment
+
+    jackdaw replay logs/episodes.jsonl        # replay recorded training episodes
+    jackdaw replay logs/episodes.jsonl --port 8770
 """
 
 from __future__ import annotations
@@ -158,6 +161,24 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # -- replay ---------------------------------------------------------------
+    p_replay = sub.add_parser(
+        "replay",
+        help="Browse recorded training episodes in the web dashboard",
+    )
+    p_replay.add_argument(
+        "file",
+        metavar="FILE",
+        help="Path to episodes.jsonl recorded by train_ppo.py --record-dir",
+    )
+    p_replay.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        metavar="PORT",
+        help="Port for the replay dashboard (default: 8765)",
+    )
+
     return parser
 
 
@@ -181,6 +202,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "run":
         _run_command(args)
+
+    if args.command == "replay":
+        _replay_command(args)
 
 
 def _run_command(args: argparse.Namespace) -> None:
@@ -282,6 +306,32 @@ def _run_command(args: argparse.Namespace) -> None:
                     time.sleep(1)
             except KeyboardInterrupt:
                 print("\n  Closing dashboard.")
+
+
+def _replay_command(args: argparse.Namespace) -> None:
+    import time
+    import webbrowser
+    from pathlib import Path
+
+    from jackdaw.visualization.replay_server import ReplayServer
+
+    path = Path(args.file)
+    if not path.exists():
+        print(f"Error: file not found: {path}")
+        sys.exit(1)
+
+    server = ReplayServer(path, port=args.port)
+    server.start()
+
+    url = f"http://127.0.0.1:{args.port}/?mode=replay"
+    webbrowser.open(url)
+
+    print("  Press Ctrl+C to stop.\n")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n  Closing replay dashboard.")
 
 
 if __name__ == "__main__":
