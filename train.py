@@ -26,28 +26,15 @@ from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
 
 from env import BalatroEnv
-from config import DECK, STAKE
+from config import (
+    DECK, STAKE, SAVE_DIR, MODEL_DIR, LOG_DIR,
+    TOTAL_STEPS, N_STEPS, BATCH_SIZE, N_EPOCHS,
+    LEARNING_RATE, GAMMA, EVAL_FREQ, CHECKPOINT_FREQ,
+)
 from instance_manager import BalatrobotManager
 from shop_action_log_callback import ShopActionLogCallback
 from research_callback import ResearchCallback
 from run_checkpoint_callback import RunCheckpointCallback
-
-
-# ─────────────────────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────────────────────
-
-SAVE_DIR = Path.cwd() / "balatro_saves"
-MODEL_DIR       = "./models"
-LOG_DIR         = "./logs"
-TOTAL_STEPS     = 100_000
-N_STEPS         = 256
-BATCH_SIZE      = 64
-N_EPOCHS        = 10
-LEARNING_RATE   = 0.0003
-GAMMA           = 0.99
-EVAL_FREQ       = 256
-CHECKPOINT_FREQ = 2_000
 
 
 # ─────────────────────────────────────────────────────────────
