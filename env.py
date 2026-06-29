@@ -14,6 +14,15 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Tuple
 
+
+try:
+    from emulator.env.balatro_env import BalatroEnvironment
+    from emulator.env.game_interface import DirectAdapter
+    JACKDAW_AVAILABLE = True
+except Exception:
+    JACKDAW_AVAILABLE = False
+
+
 from strategy import (
     Strategy,
     pick_best_play,
@@ -177,12 +186,24 @@ class BalatroEnv(gym.Env):
         save_path: str = Path.cwd() / "fresh_balatro.jkr",
         seed: str = SEED,
         render_mode: Optional[str] = None,
+        emulator: bool = False,
     ):
         super().__init__()
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
-        self.client    = BalatrobotClient(port)
+        self.emulator = emulator
+        
+        if emulator:
+            if not JACKDAW_AVAILABLE:
+                raise RuntimeError("Jackdaw emulator not installed")
+
+            self.sim = BalatroEnvironment(
+                adapter_factory=DirectAdapter
+            )
+        else:
+            self.client = BalatrobotClient(port)
+
 
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0,
@@ -205,6 +226,14 @@ class BalatroEnv(gym.Env):
         options: Optional[dict] = None,
     ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
+
+        if self.emulator:
+            obs, mask, info = self.sim.reset()
+
+            self._steps = 0
+            self._episode_reward = 0.0
+
+            return np.asarray(obs, dtype=np.float32), info
 
         # Fast reset via load() — 6.75x faster than start()
         self.client.call("load", {"path": self.save_path})
@@ -250,6 +279,20 @@ class BalatroEnv(gym.Env):
         }
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
+        if self.emulator:
+
+            obs, terminated, truncated, mask, info = self.sim.step(action)
+
+            reward = self._jackdaw_reward(info)
+
+            return (
+                np.asarray(obs, dtype=np.float32),
+                reward,
+                terminated,
+                truncated,
+                info,
+            )
+
         assert self.action_space.contains(action), f"Invalid action: {action}"
         self._steps += 1
 

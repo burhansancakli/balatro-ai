@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+jackdaw.egg-info/PKG-INFO
+jackdaw.egg-info/SOURCES.txt
+jackdaw.egg-info/dependency_links.txt
+jackdaw.egg-info/entry_points.txt
+jackdaw.egg-info/requires.txt
+jackdaw.egg-info/top_level.txt
+tests/test_observations.py
+tests/test_rewards.py
+tests/test_shop_logic.py
+tests/test_strategy.py
