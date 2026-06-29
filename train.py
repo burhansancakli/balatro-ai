@@ -24,7 +24,7 @@ import atexit
 from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import (
     EvalCallback,
     CheckpointCallback,
@@ -345,14 +345,6 @@ def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
-    vec_env = VecNormalize(
-        vec_env,
-        norm_obs=True,       # normalize observations to zero-mean, unit-variance
-        norm_reward=True,    # normalize rewards — stabilizes value_loss
-        clip_obs=10.0,
-        clip_reward=10.0,
-        gamma=GAMMA,
-    )
     print(f" Environments ready")
 
     eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
