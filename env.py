@@ -9,14 +9,18 @@ for parallel training via stable-baselines3 SubprocVecEnv.
 import time
 from pathlib import Path
 import numpy as np
-import requests
 import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Tuple
 
+from config import (
+    SEED, DECK, STAKE, MAX_STEPS,
+    POLL_INTERVAL, POLL_TIMEOUT,
+    SURVIVAL_REWARD, PROGRESS_REWARD_SCALE, CASH_OUT_SETTLE_WAIT,
+)
+from emulator.bridge import LiveBackend, SimBackend
 from strategy import (
     Strategy,
-    pick_best_play,
     pick_best_action,
     parse_cards_from_gamestate,
     parse_jokers_from_gamestate,
@@ -24,138 +28,6 @@ from strategy import (
 )
 from observations import gamestate_to_observation, OBS_SIZE, MAX_SHOP_SLOTS, MAX_JOKER_SLOTS
 
-
-
-# ─────────────────────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────────────────────
-
-DECK            = "RED"
-STAKE           = "WHITE"
-SEED            = "TRAIN01"
-MAX_STEPS       = 500
-RPC_TIMEOUT     = 60       # generous timeout for slow transitions
-RPC_RETRIES     = 3        # retry count on timeout
-RPC_RETRY_WAIT  = 0.5     # seconds between retries
-POLL_INTERVAL   = 0.02      # seconds between state polls
-POLL_TIMEOUT    = 30.0     # max seconds to wait for a state transition
-
-SURVIVAL_REWARD       = 0.05
-PROGRESS_REWARD_SCALE = 0.02
-CASH_OUT_SETTLE_WAIT  = 0.05
-
-
-# ─────────────────────────────────────────────────────────────
-# TRANSITIONAL STATES
-# States the game passes through briefly — we just poll past them
-# ─────────────────────────────────────────────────────────────
-TRANSITIONAL_STATES = {
-    "HAND_PLAYED",
-    "DRAW_TO_HAND",
-    "PLAY_ANIM",
-    "SCORING",
-    "SCORED",
-    "ROUND_TRANSITION",
-}
-
-
-# ─────────────────────────────────────────────────────────────
-# RPC CLIENT
-# ─────────────────────────────────────────────────────────────
-
-class BalatrobotClient:
-    """Thin JSON-RPC client with retry logic for one Balatrobot instance.
-
-    Can optionally wrap a SimBackend instead of making HTTP calls.
-    """
-
-    def __init__(self, port: int, backend=None):
-        self.url     = f"http://127.0.0.1:{port}"
-        self.port    = port
-        self.backend = backend
-
-    def call(self, method: str, params: dict = {}) -> dict:
-        """
-        Call a Balatrobot RPC method with automatic retry on timeout.
-        Raises RuntimeError if all retries fail.
-        """
-        if self.backend is not None:
-            # SimBackend uses "start" instead of "load"
-            if method == "load":
-                seed = Path(params.get("path", "")).stem.replace("fresh_", "")
-                return self.backend.handle("start", {"deck": DECK, "stake": STAKE, "seed": seed or "DEFAULT"})
-            return self.backend.handle(method, params)
-
-        last_error = None
-        for attempt in range(RPC_RETRIES):
-            try:
-                response = requests.post(
-                    self.url,
-                    json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
-                    timeout=RPC_TIMEOUT,
-                )
-                data = response.json()
-                if "error" in data:
-                    raise RuntimeError(f"[RPC:{method}] {data['error']['message']}")
-                return data["result"]
-
-            except requests.exceptions.ReadTimeout as e:
-                last_error = e
-                if attempt < RPC_RETRIES - 1:
-                    time.sleep(RPC_RETRY_WAIT)
-                    continue
-
-            except requests.exceptions.ConnectionError as e:
-                last_error = e
-                if attempt < RPC_RETRIES - 1:
-                    time.sleep(RPC_RETRY_WAIT)
-                    continue
-
-        raise RuntimeError(
-            f"[port {self.port}] RPC '{method}' failed after {RPC_RETRIES} attempts: {last_error}"
-        )
-
-    def health(self) -> bool:
-        try:
-            return self.call("health").get("status") == "ok"
-        except Exception:
-            return False
-
-    def poll_until(self, target_states: list, timeout: float = POLL_TIMEOUT) -> dict:
-        """
-        Poll gamestate until one of the target states is reached.
-        Automatically skips through known transitional states.
-        """
-        if self.backend is not None:
-            return self.call("gamestate")
-
-        deadline = time.time() + timeout
-        last_state = None
-
-        while time.time() < deadline:
-            try:
-                state = self.call("gamestate")
-                current = state.get("state", "")
-                last_state = current
-
-                if current in target_states:
-                    return state
-
-                # If in a known transitional state just keep polling
-                if current in TRANSITIONAL_STATES:
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                # Unknown state — poll but warn
-                time.sleep(POLL_INTERVAL)
-
-            except Exception:
-                time.sleep(POLL_INTERVAL)
-
-        raise TimeoutError(
-            f"[port {self.port}] Timeout ({timeout}s) waiting for {target_states}. "
-            f"Last state: {last_state}"
-        )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -197,8 +69,7 @@ class BalatroEnv(gym.Env):
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
-        self.client    = BalatrobotClient(port, backend=backend)
-
+        self.backend   = backend or LiveBackend(port=port)
 
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0,
@@ -223,20 +94,14 @@ class BalatroEnv(gym.Env):
         super().reset(seed=seed)
 
         # Fast reset via load() — 6.75x faster than start()
-        self.client.call("load", {"path": self.save_path})
+        self._call("load", {"path": self.save_path})
 
         # Wait for a playable state — mod auto-handles BLIND_SELECT
-        # but we accept it too as a fallback
-        state = self.client.poll_until([
-            "BLIND_SELECT", "SELECTING_HAND", "SHOP"
-        ])
+        state = self._poll_until(["BLIND_SELECT", "SELECTING_HAND", "SHOP"])
 
-        # If mod didn't auto-select blind, do it here as fallback
+        # If mod didn't auto-select blind, do it here
         if state.get("state") == "BLIND_SELECT":
-            try:
-                state = self.client.call("select")
-            except Exception:
-                state = self.client.poll_until(["SELECTING_HAND", "SHOP"])
+            state = self._call("select")
 
         self._current_ante     = state.get("ante_num", 1)
         self._steps            = 0
@@ -247,15 +112,9 @@ class BalatroEnv(gym.Env):
         # If we landed in SHOP, skip to SELECTING_HAND so the first
         # step() gets a hand to play, not a buy decision on stale shop.
         if state.get("state") == "SHOP":
-            try:
-                state = self.client.call("next_round")
-            except Exception:
-                state = self.client.poll_until(["BLIND_SELECT", "SELECTING_HAND", "SHOP"])
+            state = self._call("next_round")
             if state.get("state") == "BLIND_SELECT":
-                try:
-                    state = self.client.call("select")
-                except Exception:
-                    state = self.client.poll_until(["SELECTING_HAND", "SHOP"])
+                state = self._call("select")
             self._last_gamestate = state
 
         return gamestate_to_observation(state), {
@@ -277,17 +136,12 @@ class BalatroEnv(gym.Env):
         if state.get("state") == "SHOP":
             self._execute_shop_action(state, action)
             total_reward += self._outcome_reward(state)
-            try:
-                state = self.client.call("next_round")
-            except Exception:
-                state = self.client.poll_until([
-                    "BLIND_SELECT", "SELECTING_HAND", "GAME_OVER"
-                ])
+            
+            state = self._call("next_round")
             if state.get("state") == "BLIND_SELECT":
-                try:
-                    state = self.client.call("select")
-                except Exception:
-                    state = self.client.poll_until(["SELECTING_HAND", "GAME_OVER"])
+                
+                state = self._call("select")
+               
             self._last_gamestate = state
 
             if state.get("state") == "GAME_OVER":
@@ -344,6 +198,32 @@ class BalatroEnv(gym.Env):
     def close(self):
         pass
 
+    # ─── Backend helpers ──────────────────────────────────────
+
+    def _call(self, method: str, params: dict = {}) -> dict:
+        """Call backend.handle() directly, with load→start translation for SimBackend."""
+        if isinstance(self.backend, SimBackend) and method == "load":
+            seed = Path(params.get("path", "")).stem.replace("fresh_", "")
+            return self.backend.handle("start", {"deck": DECK, "stake": STAKE, "seed": seed or "DEFAULT"})
+        return self.backend.handle(method, params)
+
+    def _poll_until(self, target_states: list, timeout: float = POLL_TIMEOUT) -> dict:
+        """Poll gamestate until one of the target states is reached."""
+        if isinstance(self.backend, SimBackend):
+            return self._call("gamestate")
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                state = self._call("gamestate")
+                if state.get("state", "") in target_states:
+                    return state
+            except Exception:
+                pass
+            time.sleep(POLL_INTERVAL)
+
+        raise TimeoutError(f"[port {self.port}] Timeout waiting for {target_states}")
+
     # ─── Internal: ante execution ─────────────────────────────
 
     def _play_ante(self, strategy: Strategy) -> Tuple[float, dict, bool, list]:
@@ -368,10 +248,7 @@ class BalatroEnv(gym.Env):
 
             # ── Blind select (fallback — mod should handle this) ─
             elif current == "BLIND_SELECT":
-                try:
-                    state = self.client.call("select")
-                except Exception:
-                    state = self.client.poll_until(["SELECTING_HAND"])
+                state = self._call("select")
 
             # ── Play a hand ─────────────────────────────────────
             elif current == "SELECTING_HAND":
@@ -382,15 +259,8 @@ class BalatroEnv(gym.Env):
 
             # ── Cash out after round ────────────────────────────
             elif current == "ROUND_EVAL":
-                # Poll briefly to let animations settle, then cash out
                 time.sleep(CASH_OUT_SETTLE_WAIT)
-                try:
-                    state = self.client.call("cash_out")
-                except Exception:
-                    # If cash_out times out, poll until next state
-                    state = self.client.poll_until([
-                        "SHOP", "BLIND_SELECT", "GAME_OVER", "SELECTING_HAND"
-                    ])
+                state = self._call("cash_out")
                 if state.get("state") != "GAME_OVER":
                     total_reward += SURVIVAL_REWARD
 
@@ -400,18 +270,12 @@ class BalatroEnv(gym.Env):
 
             # ── Booster pack (mod should prevent this) ──────────
             elif current == "SMODS_BOOSTER_OPENED":
-                try:
-                    state = self.client.call("pack", {"skip": True})
-                except Exception:
-                    state = self.client.poll_until(["SHOP", "BLIND_SELECT"])
+                state = self._call("pack", {"skip": True})
 
             # ── Transitional / unknown state ────────────────────
             else:
                 time.sleep(POLL_INTERVAL)
-                try:
-                    state = self.client.call("gamestate")
-                except Exception:
-                    time.sleep(0.5)
+                state = self._call("gamestate")
 
         # Safety: exceeded loop limit
         return total_reward, state, True, hand_logs
@@ -422,10 +286,7 @@ class BalatroEnv(gym.Env):
         joker_labels = parse_jokers_from_gamestate(state)
 
         if not hand_cards:
-            try:
-                state = self.client.call("gamestate")
-            except Exception:
-                pass
+            state = self._call("gamestate")
             return state, 0.0, ""
 
         round_info = state.get("round", {}) or {}
@@ -443,14 +304,7 @@ class BalatroEnv(gym.Env):
                 f"action=discard discarded=[{', '.join(discarded_cards)}]"
             )
 
-            try:
-                new_state = self.client.call("discard", {"cards": indices})
-            except Exception:
-                # If discard times out, poll until stable state
-                new_state = self.client.poll_until([
-                    "SELECTING_HAND", "ROUND_EVAL", "GAME_OVER"
-                ])
-
+            new_state = self._call("discard", {"cards": indices})
             return new_state, 0.0, action_summary
         else:
             played_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
@@ -460,13 +314,7 @@ class BalatroEnv(gym.Env):
                 f"hand={hand_type} played=[{', '.join(played_cards)}]"
             )
 
-            try:
-                new_state = self.client.call("play", {"cards": indices})
-            except Exception:
-                # If play times out, poll until stable state
-                new_state = self.client.poll_until([
-                    "SELECTING_HAND", "ROUND_EVAL", "GAME_OVER"
-                ])
+            new_state = self._call("play", {"cards": indices})
 
             coherence = strategy_coherence_reward(hand_type, strategy)
             reward    = coherence * 0.1 + self._progress_reward(new_state)
@@ -505,13 +353,9 @@ class BalatroEnv(gym.Env):
             if not self._has_joker_slot(state):
                 return 0.0  # no room
 
-            try:
-                self.client.call("buy", {"card": int(buy_idx)})
-                self._jokers_bought_episode += 1
-                return 0.0 
-            except Exception as e:
-                print(f"[port {self.port}] Buy failed for '{label}' at index {buy_idx}: {e}")
-                return 0.0
+            self._call("buy", {"card": int(buy_idx)})
+            self._jokers_bought_episode += 1
+            return 0.0
 
         # ── Sell actions (5-9) ─────────────────────────────────
         if MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
@@ -523,12 +367,8 @@ class BalatroEnv(gym.Env):
                 return 0.0  # no joker at that slot
 
             label = joker_cards[sell_idx].get("label", f"joker_{sell_idx}")
-            try:
-                self.client.call("sell", {"joker": int(sell_idx)})
-                return -0.05  # small penalty to discourage random selling
-            except Exception as e:
-                print(f"[port {self.port}] Sell failed for '{label}' at index {sell_idx}: {e}")
-                return 0.0
+            self._call("sell", {"joker": int(sell_idx)})
+            return -0.05  # small penalty to discourage random selling
 
         return 0.0  # unknown action
 

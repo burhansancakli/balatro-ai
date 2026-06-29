@@ -166,7 +166,7 @@ class SimBackend:
         if self._gs is None:
             raise RPCError(INVALID_STATE, "No active run — call 'start' first")
 
-        from bridge.deserializer import rpc_to_action
+        from emulator.bridge.deserializer import rpc_to_action
 
         try:
             action = rpc_to_action(method, params)

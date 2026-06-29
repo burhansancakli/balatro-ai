@@ -33,7 +33,8 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
 
-from env import BalatroEnv, DECK, STAKE
+from env import BalatroEnv
+from config import DECK, STAKE
 
 
 # ─────────────────────────────────────────────────────────────
@@ -236,9 +237,17 @@ def make_env(port: int, seed: str, rank: int, backend=None):
     save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
-        env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
-        env.reset(seed=rank)
-        return env
+        try:
+            env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
+            env.reset(seed=rank)
+            return env
+        except Exception as e:
+            import traceback
+            print(f"\n{'='*60}", flush=True)
+            print(f"[FATAL] make_env failed for port={port} seed={seed} rank={rank}", flush=True)
+            traceback.print_exc()
+            print(f"{'='*60}\n", flush=True)
+            raise
 
     set_random_seed(rank)
     return _init
