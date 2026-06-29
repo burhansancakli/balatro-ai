@@ -287,22 +287,11 @@ def parse_cards_from_gamestate(gamestate: dict) -> List[dict]:
 
 def parse_jokers_from_gamestate(gamestate: dict) -> List[str]:
     """Extract owned joker display names from raw gamestate."""
-    if not isinstance(gamestate, dict):
-        return []
-    
     jokers = gamestate.get("jokers", {}) or {}
-
-    if isinstance(jokers, list):
-        raw_cards = jokers
-    elif isinstance(jokers, dict):
-        raw_cards = jokers.get("cards", []) or []
-    else:
-        raw_cards = []
-
-    
+    raw_cards = jokers.get("cards", []) or []
     labels = []
     for card in raw_cards:
-        label = card.get("label", "") or card.get("name", "")
+        label = card.get("label", "")
         if label:
             labels.append(label)
     return labels
