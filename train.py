@@ -148,8 +148,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--setup-only", action="store_true",
                         help="Only start instances and create save files")
-    parser.add_argument("-n", "--instances", type=int, default=4,
-                        help="Number of parallel Balatrobot instances (default: 4)")
+    parser.add_argument("-n", "--instances", type=int, default=1,
+                        help="Number of parallel Balatrobot instances (default: 1)")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to a saved model .zip to resume training from")
     parser.add_argument("--emulator", action="store_true",
