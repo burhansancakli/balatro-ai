@@ -248,24 +248,27 @@ def make_env(port: int, seed: str, rank: int):
 # STRATEGY LOG CALLBACK
 # ─────────────────────────────────────────────────────────────
 
-class StrategyLogCallback(BaseCallback):
-    """Log high-level strategy selection frequencies to TensorBoard."""
+class ShopActionLogCallback(BaseCallback):
+    """Log shop action frequencies to TensorBoard."""
 
-    def __init__(self, verbose=0):
+    def __init__(self, verbose=0, n_actions=10):
         super().__init__(verbose)
-        self.strategy_counts = [0, 0, 0]
+        self.action_counts = [0] * n_actions
 
     def _on_step(self) -> bool:
         actions = self.locals.get("actions", [])
         for a in actions:
-            if 0 <= int(a) < 3:
-                self.strategy_counts[int(a)] += 1
+            idx = int(a)
+            if 0 <= idx < len(self.action_counts):
+                self.action_counts[idx] += 1
 
-        total = sum(self.strategy_counts)
+        total = sum(self.action_counts)
         if total > 0 and total % 1000 < len(actions):
-            self.logger.record("strategy/flush_pct",  100 * self.strategy_counts[0] / total)
-            self.logger.record("strategy/pair_pct",   100 * self.strategy_counts[1] / total)
-            self.logger.record("strategy/mult_pct",   100 * self.strategy_counts[2] / total)
+            self.logger.record("shop/skip_pct", 100 * self.action_counts[0] / total)
+            for i in range(1, 5):  # buy actions 1-4
+                self.logger.record(f"shop/buy_{i}_pct", 100 * self.action_counts[i] / total)
+            for i in range(5, len(self.action_counts)):  # sell actions 5-9
+                self.logger.record(f"shop/sell_{i-4}_pct", 100 * self.action_counts[i] / total)
 
         return True
 
@@ -313,11 +316,25 @@ class ResearchCallback(BaseCallback):
         self._ep_rounds = []
 
 
+class _RunCheckpointCallback(CheckpointCallback):
+    """CheckpointCallback that auto-names files after the TensorBoard run."""
+
+    def __init__(self, save_freq: int, save_path: str):
+        super().__init__(save_freq=save_freq, save_path=save_path, name_prefix="")
+        self._name_set = False
+
+    def _on_training_start(self) -> None:
+        # Extract run name from logger dir (e.g. "logs/PPO_1" → "PPO_1")
+        run_name = Path(self.model.logger.dir).name
+        self.name_prefix = run_name
+        self._name_set = True
+
+
 # ─────────────────────────────────────────────────────────────
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(manager: BalatrobotManager, ports: list, seeds: list):
+def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str = None):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
@@ -341,37 +358,47 @@ def train(manager: BalatrobotManager, ports: list, seeds: list):
     eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
     eval_env = VecMonitor(eval_env)
 
-    model = PPO(
-        policy          = "MlpPolicy",
-        env             = vec_env,
-        n_steps         = N_STEPS,
-        batch_size      = BATCH_SIZE,
-        n_epochs        = N_EPOCHS,
-        learning_rate   = LEARNING_RATE,
-        gamma           = GAMMA,
-        gae_lambda      = 0.95,
-        clip_range      = 0.2,
-        ent_coef        = 0.01,
-        verbose         = 1,
-        tensorboard_log = LOG_DIR,
-        policy_kwargs   = dict(net_arch=[64, 64]),
-    )
+    if resume_path:
+        print(f"\nResuming training from {resume_path}")
+        model = PPO.load(resume_path, env=vec_env, tensorboard_log=LOG_DIR)
+        # Extract step count from filename (e.g. balatro_ppo_44000_steps.zip)
+        import re
+        match = re.search(r"(\d+)_steps", Path(resume_path).stem)
+        if match:
+            start_steps = int(match.group(1))
+            model.num_timesteps = start_steps
+            print(f"  Resuming from step {start_steps:,}")
+    else:
+        model = PPO(
+            policy          = "MlpPolicy",
+            env             = vec_env,
+            n_steps         = N_STEPS,
+            batch_size      = BATCH_SIZE,
+            n_epochs        = N_EPOCHS,
+            learning_rate   = LEARNING_RATE,
+            gamma           = GAMMA,
+            gae_lambda      = 0.95,
+            clip_range      = 0.2,
+            ent_coef        = 0.05,
+            verbose         = 1,
+            tensorboard_log = LOG_DIR,
+            policy_kwargs   = dict(net_arch=[64, 64]),
+        )
 
     callbacks = [
-        CheckpointCallback(
+        _RunCheckpointCallback(
             save_freq   = CHECKPOINT_FREQ // len(ports),
             save_path   = MODEL_DIR,
-            name_prefix = "balatro_ppo",
         ),
-        #EvalCallback(
-        #    eval_env,
-        #    eval_freq            = EVAL_FREQ // len(ports),
-        #    best_model_save_path = os.path.join(MODEL_DIR, "best"),
-        #    log_path             = LOG_DIR,
-        #    deterministic        = True,
-        #    render               = False,
-        #),
-        StrategyLogCallback(),
+        EvalCallback(
+            eval_env,
+            eval_freq            = EVAL_FREQ // len(ports),
+            best_model_save_path = os.path.join(MODEL_DIR, "best"),
+            log_path             = LOG_DIR,
+            deterministic        = True,
+            render               = False,
+        ),
+        ShopActionLogCallback(),
         ResearchCallback(),
         GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
     ]
@@ -410,12 +437,14 @@ if __name__ == "__main__":
                         help="Skip launching instances (if already running)")
     parser.add_argument("-n", "--instances", type=int, default=4,
                         help="Number of parallel Balatrobot instances (default: 4)")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to a saved model .zip to resume training from")
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
     BALATROBOT_FLAGS.extend(unknown_args)
 
     PORTS = random.sample(range(10000, 65535), args.instances)
-    SEEDS = [f"TRAIN{i:02d}" for i in range(1, args.instances + 1)]
+    SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
     manager = BalatrobotManager(PORTS)
 
@@ -442,4 +471,4 @@ if __name__ == "__main__":
         print("Setup complete. Run 'python train.py --no-launch' to train.")
         exit(0)
 
-    train(manager, PORTS, SEEDS)
+    train(manager, PORTS, SEEDS, resume_path=args.resume)
