@@ -273,40 +273,13 @@ def pick_best_play(
 
 def parse_cards_from_gamestate(gamestate: dict) -> List[dict]:
     """Extract a clean list of {rank, suit} dicts from raw gamestate."""
-    if not isinstance(gamestate, dict):
-        return []
-
     hand = gamestate.get("hand", {}) or {}
-
-    if isinstance(hand,list):
-        raw_cards = hand
-    elif isinstance(hand, dict):
-        raw_cards = hand.get("cards", []) or []
-    else:
-        raw_cards = []
-
+    raw_cards = hand.get("cards", []) or []
     cards = []
     for c in raw_cards:
-        # Emulator raw card objects
-        if hasattr(c, "base") and c.base is not None:
-            cards.append({
-                "rank": c.base.rank.value, 
-                "suit": c.base.suit.value
-            })
-            continue
-        
-        # Standard gamestate dictonaries
-        if isinstance(c, dict):
-            if "value" in c and isinstance(c["value"], dict):
-                rank = c["value"].get("rank", "")
-                suit = c["value"].get("suit", "")
-            else:
-                rank = c.get("rank", c.get("value", ""))
-                suit = c.get("suit", "")
-
-            if rank and suit:
-                cards.append({"rank": rank, "suit": suit})
-
+        value = c.get("value", {}) or {}
+        rank  = value.get("rank", "")
+        suit  = value.get("suit", "")
         if rank and suit:
             cards.append({"rank": rank, "suit": suit})
     return cards
