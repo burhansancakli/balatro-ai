@@ -1,3 +1,2 @@
 [console_scripts]
 emulator = emulator.cli.main:main
-jackdaw = cli.main:main

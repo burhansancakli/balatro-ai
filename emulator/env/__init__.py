@@ -39,6 +39,7 @@ from emulator.env.game_spec import (
     GameObservation,
     GameSpec,
 )
+from emulator.env.episode_recorder import EpisodeRecorderWrapper
 from emulator.env.gymnasium_wrapper import BalatroGymnasiumEnv
 from emulator.env.observation import (
     D_CONSUMABLE,
@@ -59,6 +60,7 @@ __all__ = [
     "BalatroGymnasiumEnv",
     "BridgeAdapter",
     "ConsumableTargetSpec",
+    "EpisodeRecorderWrapper",
     "D_CONSUMABLE",
     "D_GLOBAL",
     "D_JOKER",

@@ -105,6 +105,33 @@ def step(game_state: dict[str, Any], action: Action) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Action logging helper
+# ---------------------------------------------------------------------------
+
+
+def _log_action(gs: dict[str, Any], entry: dict[str, Any]) -> None:
+    """Append a lightweight action entry to gs['action_log']."""
+    rr = gs.get("round_resets", {})
+    entry.setdefault("ante", rr.get("ante", 1))
+    entry.setdefault("round", gs.get("round", 0))
+    entry.setdefault("dollars", gs.get("dollars", 0))
+    gs.setdefault("action_log", []).append(entry)
+
+
+def _card_label(card: Any) -> str:
+    """Return a short human-readable label for a card."""
+    base = getattr(card, "base", None)
+    if base is not None:
+        rank = getattr(base, "rank", None)
+        suit = getattr(base, "suit", None)
+        r = rank.value if hasattr(rank, "value") else str(rank)
+        s = suit.value if hasattr(suit, "value") else str(suit)
+        return f"{r[:1] if len(r) > 2 else r}{s[:1]}"
+    ability = card.ability if isinstance(card.ability, dict) else {}
+    return ability.get("name", getattr(card, "center_key", "?"))
+
+
+# ---------------------------------------------------------------------------
 # Phase validation helper
 # ---------------------------------------------------------------------------
 

@@ -1,18 +1,22 @@
-"""Jackdaw CLI — top-level entry point.
+"""emulator CLI — top-level entry point.
 
 Usage::
 
-    jackdaw validate                          # run all scenarios
-    jackdaw validate --category jokers        # run only joker scenarios
-    jackdaw validate --scenario joker_joker   # run one scenario
-    jackdaw validate --host 127.0.0.1 --port 12346
+    emulator validate                          # run all scenarios
+    emulator validate --category jokers        # run only joker scenarios
+    emulator validate --scenario joker_joker   # run one scenario
+    emulator validate --host 127.0.0.1 --port 12346
 
-    jackdaw run --mode watch                  # agent plays, you observe
-    jackdaw run --mode play                   # you play via browser
-    jackdaw run --mode watch --agent greedy --seed SEED42 --deck b_red
-    jackdaw run --mode watch --no-web         # terminal only
-    jackdaw run --mode watch --no-terminal    # browser only
-    jackdaw run --mode watch --host 127.0.0.1 # live mode against real Balatro
+    emulator run --mode watch                  # agent plays, you observe
+    emulator run --mode play                   # you play via browser
+    emulator run --mode watch --agent greedy --seed SEED42 --deck b_red
+    emulator run --mode watch --no-web         # terminal only
+    emulator run --mode watch --no-terminal    # browser only
+    emulator run --mode watch --host 127.0.0.1 # live mode against real Balatro
+    emulator run --mode watch --env simplified  # restricted training environment
+
+    emulator replay logs/episodes.jsonl        # replay recorded training episodes
+    emulator replay logs/episodes.jsonl --port 8770
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import sys
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="jackdaw",
+        prog="emulator",
         description="Headless Balatro simulator for reinforcement learning research",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -146,6 +150,34 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PORT",
         help="Balatrobot port (default: 12346, used with --host)",
     )
+    p_run.add_argument(
+        "--env",
+        choices=("standard", "simplified"),
+        default="standard",
+        help=(
+            "standard = full game | "
+            "simplified = joker whitelist, no vouchers/boosters, "
+            "fixed 4 hands/4 discards, boss blinds disabled (default: standard)"
+        ),
+    )
+
+    # -- replay ---------------------------------------------------------------
+    p_replay = sub.add_parser(
+        "replay",
+        help="Browse recorded training episodes in the web dashboard",
+    )
+    p_replay.add_argument(
+        "file",
+        metavar="FILE",
+        help="Path to episodes.jsonl recorded by train_ppo.py --record-dir",
+    )
+    p_replay.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        metavar="PORT",
+        help="Port for the replay dashboard (default: 8765)",
+    )
 
     return parser
 
@@ -156,7 +188,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "validate":
-        from cli.validate import run_validate
+        from emulator.cli.validate import run_validate
 
         sys.exit(
             run_validate(
@@ -171,13 +203,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "run":
         _run_command(args)
 
+    if args.command == "replay":
+        _replay_command(args)
+
 
 def _run_command(args: argparse.Namespace) -> None:
     import random as _random
     import time
     import webbrowser
 
-    from visualization.observer import GameObserver
+    from emulator.visualization.observer import GameObserver
 
     # Resolve seed
     seed = args.seed or f"SEED{_random.randint(1000, 9999)}"
@@ -186,13 +221,13 @@ def _run_command(args: argparse.Namespace) -> None:
     adapter = None
     live_mode = args.host is not None
     if live_mode:
-        from bridge.backend import LiveBackend
+        from emulator.bridge.backend import LiveBackend
         from emulator.env.game_interface import BridgeAdapter
 
         backend = LiveBackend(host=args.host, port=args.port)
         adapter = BridgeAdapter(backend)
         adapter.reset(back_key=args.deck, stake=args.stake, seed=seed)
-        print(f"  🔴 LIVE MODE — connected to {args.host}:{args.port}")
+        print(f"  LIVE MODE — connected to {args.host}:{args.port}")
 
     observer = GameObserver(
         use_terminal=args.terminal,
@@ -201,19 +236,23 @@ def _run_command(args: argparse.Namespace) -> None:
         port=args.web_port,
     )
 
+    simplified = args.env == "simplified"
+
     with observer:
         if args.mode == "play":
             if not args.web:
                 print("Error: play mode requires the web dashboard (remove --no-web).")
                 sys.exit(1)
             url = f"http://127.0.0.1:{args.web_port}/?mode=play"
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}")
+            mode_label = "LIVE" if live_mode else "SIM"
+            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}  |  Mode: {mode_label}")
             print(f"  Opening browser → {url}\n")
             webbrowser.open(url)
             result = observer.simulate_play(
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
+                simplified=simplified,
                 adapter=adapter,
             )
         else:
@@ -224,12 +263,12 @@ def _run_command(args: argparse.Namespace) -> None:
                 if not args.model:
                     print("Error: --agent ppo requires --model <path/to/model.zip>")
                     sys.exit(1)
-                from cli.ppo_agent import make_ppo_agent
+                from emulator.cli.ppo_agent import make_ppo_agent
                 agent = make_ppo_agent(args.model)
             elif args.agent == "greedy":
                 agent = greedy_play_agent
             elif args.agent == "smart":
-                from cli.smart_agent import smart_agent
+                from emulator.cli.smart_agent import smart_agent
                 agent = smart_agent
             else:
                 agent = random_agent
@@ -239,12 +278,16 @@ def _run_command(args: argparse.Namespace) -> None:
                 webbrowser.open(url)
 
             mode_label = "LIVE" if live_mode else "SIM"
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Agent: {args.agent}  |  Mode: {mode_label}\n")
+            print(
+                f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}"
+                f"  |  Agent: {args.agent}  |  Env: {args.env}  |  Mode: {mode_label}\n"
+            )
             result = observer.simulate_watched(
                 back_key=args.deck,
                 stake=args.stake,
                 seed=seed,
                 agent=agent,
+                simplified=simplified,
                 adapter=adapter,
             )
 
@@ -253,7 +296,7 @@ def _run_command(args: argparse.Namespace) -> None:
         rounds = result.get("round", 0)
         actions = result.get("actions_taken", 0)
         dollars = result.get("dollars", 0)
-        status = "WON 🏆" if won else "GAME OVER"
+        status = "WON" if won else "GAME OVER"
         print(f"\n  {status}  ·  Rounds: {rounds}  ·  Actions: {actions}  ·  Final $: {dollars}\n")
 
         if args.web:
@@ -263,6 +306,32 @@ def _run_command(args: argparse.Namespace) -> None:
                     time.sleep(1)
             except KeyboardInterrupt:
                 print("\n  Closing dashboard.")
+
+
+def _replay_command(args: argparse.Namespace) -> None:
+    import time
+    import webbrowser
+    from pathlib import Path
+
+    from emulator.visualization.replay_server import ReplayServer
+
+    path = Path(args.file)
+    if not path.exists():
+        print(f"Error: file not found: {path}")
+        sys.exit(1)
+
+    server = ReplayServer(path, port=args.port)
+    server.start()
+
+    url = f"http://127.0.0.1:{args.port}/?mode=replay"
+    webbrowser.open(url)
+
+    print("  Press Ctrl+C to stop.\n")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n  Closing replay dashboard.")
 
 
 if __name__ == "__main__":

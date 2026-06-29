@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>emulator — Balatro Simulator</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script>window.WS_PORT = __WS_PORT__;</script>
+</head>
+<body>
+
+<div id="connecting">
+  <div class="clogo">emulator</div>
+  <div class="cspinner"></div>
+  <div class="csub">Waiting for game…</div>
+</div>
+
+<div id="app">
+
+  <header id="hdr">
+    <span class="logo">emulator</span>
+    <span id="h-mode"  class="pill phase">—</span>
+    <span id="h-phase" class="pill phase">—</span>
+    <span id="h-ante"  class="pill">—</span>
+    <span id="h-money" class="pill money">$—</span>
+    <span id="h-hands" class="pill hands">— ♠</span>
+    <span id="h-disc"  class="pill disc">— ↩</span>
+    <span id="h-won"   class="pill won" style="display:none">🏆 Won!</span>
+    <div id="conn"></div>
+  </header>
+
+  <section id="scr">
+    <div class="srow">
+      <div class="bar-wrap"><div class="bar-fill" id="bar" style="width:0%"></div></div>
+      <div class="snums">
+        <b id="s-cur">0</b>
+        <span class="sep">/</span>
+        <span id="s-max">—</span>
+        <span class="sep">·</span>
+        <span class="pct" id="s-pct">0%</span>
+      </div>
+    </div>
+    <div class="hand-eval" id="heval">
+      <span class="he-name"  id="he-name"></span>
+      <span class="he-dim">·</span>
+      <span class="he-chips" id="he-chips"></span>
+      <span class="he-dim">×</span>
+      <span class="he-mult"  id="he-mult"></span>
+      <span class="he-score" id="he-score"></span>
+    </div>
+  </section>
+
+  <aside id="side">
+    <div class="panel">
+      <div class="ph">🃏 Jokers <span class="ph-right" id="joker-count"></span></div>
+      <div class="pb col" id="joker-body"></div>
+    </div>
+    <div class="panel">
+      <div class="ph">✨ Consumables</div>
+      <div class="pb" id="cons-body"></div>
+    </div>
+  </aside>
+
+  <main id="main"></main>
+
+  <section id="hist"></section>
+
+  <!-- Replay mode UI — hidden in live/play mode -->
+  <div id="replay-picker" style="display:none"></div>
+
+  <section id="acts">
+    <div class="acts-label" id="acts-label">Actions</div>
+    <div class="acts-row" id="acts-row"></div>
+    <div class="watch-note" id="watch-note">
+      <div class="wdot"></div>
+      <span>Watch mode — agent is playing</span>
+    </div>
+  </section>
+
+  <footer id="log">
+    <div class="lh">Action Log</div>
+    <div id="log-list"></div>
+  </footer>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

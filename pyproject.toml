@@ -1,11 +1,11 @@
 [project]
-name = "jackdaw"
+name = "emulator"
 version = "0.1.0"
 description = "Headless Balatro simulator for reinforcement learning research"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-authors = [{name = "Tyler Flar"}]
+authors = [{name = "Burhan Sancakli"},{name = "Said"},{name = "Aagat"},{name = "Ayxan"},{name = "Shamama"}]
 classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -21,13 +21,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["jackdaw*"]
+include = ["emulator*"]
 
 [project.scripts]
-jackdaw = "cli.main:main"
+emulator = "emulator.cli.main:main"
 
 [project.urls]
-Repository = "https://github.com/TylerFlar/jackdaw-balatro"
+Repository = "https://github.com/TylerFlar/emulator-balatro"
 
 [dependency-groups]
 dev = [
