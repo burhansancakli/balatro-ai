@@ -17,32 +17,26 @@ from pathlib import Path
 import random
 import time
 import argparse
-import subprocess
 import requests
-import signal
-import atexit
 from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
-from stable_baselines3.common.callbacks import (
-    EvalCallback,
-    CheckpointCallback,
-    BaseCallback,
-)
+from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
 
 from env import BalatroEnv
 from config import DECK, STAKE
+from instance_manager import BalatrobotManager
+from shop_action_log_callback import ShopActionLogCallback
+from research_callback import ResearchCallback
+from run_checkpoint_callback import RunCheckpointCallback
 
 
 # ─────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────
-
-# PORTS  = [12346, 12347, 12348, 12349]
-BALATROBOT_VERSION = "1.4.1"
 
 SAVE_DIR = Path.cwd() / "balatro_saves"
 MODEL_DIR       = "./models"
@@ -56,178 +50,6 @@ GAMMA           = 0.99
 EVAL_FREQ       = 256
 CHECKPOINT_FREQ = 2_000
 
-# Balatrobot server flags — maximum speed
-BALATROBOT_FLAGS = [
-    "--fast",
-    "--no-shaders",
-    "--fps-cap", "1000",
-    "--gamespeed", "4",
-    "--animation-fps", "1000",
-]
-
-HEALTH_TIMEOUT   = 30   # seconds to wait for instance to become healthy
-HEALTH_INTERVAL  = 2    # seconds between health check polls
-
-
-# ─────────────────────────────────────────────────────────────
-# INSTANCE MANAGER
-# ─────────────────────────────────────────────────────────────
-
-class BalatrobotManager:
-    """
-    Starts and manages N Balatrobot instances, one per port.
-    Automatically kills all instances on exit.
-    """
-
-    def __init__(self, ports: list):
-        self.ports     = ports
-        self.processes = {}   # port -> subprocess.Popen
-        atexit.register(self.kill_all)
-        signal.signal(signal.SIGINT,  self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-
-    def _signal_handler(self, sig, frame):
-        print("\nShutdown signal received, killing Balatrobot instances...")
-        self.kill_all()
-        exit(0)
-
-    def start_instance(self, port: int) -> bool:
-        """Start a single Balatrobot instance on the given port."""
-        # Kill existing process on this port if any
-        if port in self.processes:
-            self.kill_instance(port)
-
-        cmd = ["uvx", f"balatrobot=={BALATROBOT_VERSION}", "serve", "--port", str(port)] + BALATROBOT_FLAGS
-        print(f"  [port {port}] Starting: {' '.join(cmd)}")
-
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout = subprocess.DEVNULL,
-                stderr = subprocess.DEVNULL,
-                
-            )
-            self.processes[port] = proc
-            return True
-        except FileNotFoundError:
-            print(f"  [port {port}]  'uvx' not found. Is Balatrobot installed?")
-            return False
-        except Exception as e:
-            print(f"  [port {port}]  Failed to start: {e}")
-            return False
-
-    def wait_healthy(self, port: int) -> bool:
-        """Poll until the instance on port responds to health check."""
-        url      = f"http://127.0.0.1:{port}"
-        deadline = time.time() + HEALTH_TIMEOUT
-        print(f"  [port {port}] Waiting for health check...", end="", flush=True)
-
-        while time.time() < deadline:
-            try:
-                r = requests.post(url, json={
-                    "jsonrpc": "2.0", "method": "health", "params": {}, "id": 1
-                }, timeout=3)
-                if r.json().get("result", {}).get("status") == "ok":
-                    print("Successful")
-                    return True
-            except Exception:
-                pass
-            print(".", end="", flush=True)
-            time.sleep(HEALTH_INTERVAL)
-
-        print(f"  timeout after {HEALTH_TIMEOUT}s")
-        return False
-
-    def start_all(self) -> bool:
-        """Start all instances and wait for them to be healthy."""
-        print(f"Starting {len(self.ports)} Balatrobot instances...\n")
-
-        # Start all instances first (in parallel)
-        for port in self.ports:
-            self.start_instance(port)
-            time.sleep(1)   # slight stagger to avoid Steam conflicts
-
-        # Then wait for all to become healthy
-        print()
-        all_ok = True
-        for port in self.ports:
-            if not self.wait_healthy(port):
-                all_ok = False
-                break
-
-        return all_ok
-
-    def kill_instance(self, port: int):
-        proc = self.processes.get(port)
-        if proc and proc.poll() is None:
-            try:
-                if os.name == "nt":
-                    proc.send_signal(signal.CTRL_BREAK_EVENT)
-                else:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # kill entire group
-                proc.wait(timeout=5)
-            except ProcessLookupError:
-                pass  # already dead
-            except Exception:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # force kill
-                except Exception:
-                    proc.kill()
-        self.processes.pop(port, None)
-
-    def kill_all(self):
-        for port in list(self.processes.keys()):
-            self.kill_instance(port)
-        print("All Balatrobot instances stopped.")
-
-
-# ─────────────────────────────────────────────────────────────
-# SAVE FILE SETUP
-# ─────────────────────────────────────────────────────────────
-
-def create_save_files(ports: list, seeds: list):
-    """Create one fresh save file per instance."""
-    os.makedirs(SAVE_DIR, exist_ok=True)
-
-    for port, seed in zip(ports, seeds):
-        save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
-        url       = f"http://127.0.0.1:{port}"
-        print(f"[seed {seed}] Creating save file...")
-
-        try:
-            # Check current state
-            r = requests.post(url, json={
-                "jsonrpc": "2.0", "method": "gamestate", "params": {}, "id": 1
-            }, timeout=10)
-            state = r.json()["result"]["state"]
-
-            if state != "MENU":
-                requests.post(url, json={
-                    "jsonrpc": "2.0", "method": "menu", "params": {}, "id": 1
-                }, timeout=10)
-                time.sleep(1)
-
-            # Start fresh run with fixed seed
-            requests.post(url, json={
-                "jsonrpc": "2.0", "method": "start",
-                "params": {"deck": DECK, "stake": STAKE, "seed": seed},
-                "id": 1
-            }, timeout=20)
-
-            time.sleep(1)
-
-            # Save
-            requests.post(url, json={
-                "jsonrpc": "2.0", "method": "save",
-                "params": {"path": save_path},
-                "id": 1
-            }, timeout=10)
-
-            print(f"  Saved to {save_path}")
-
-        except Exception as e:
-            print(f"   Failed: {e}")
-
 
 # ─────────────────────────────────────────────────────────────
 # ENV FACTORY
@@ -237,106 +59,12 @@ def make_env(port: int, seed: str, rank: int, backend=None):
     save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
-        try:
-            env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
-            env.reset(seed=rank)
-            return env
-        except Exception as e:
-            import traceback
-            print(f"\n{'='*60}", flush=True)
-            print(f"[FATAL] make_env failed for port={port} seed={seed} rank={rank}", flush=True)
-            traceback.print_exc()
-            print(f"{'='*60}\n", flush=True)
-            raise
+        env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
+        env.reset(seed=rank)
+        return env
 
     set_random_seed(rank)
     return _init
-
-
-# ─────────────────────────────────────────────────────────────
-# STRATEGY LOG CALLBACK
-# ─────────────────────────────────────────────────────────────
-
-class ShopActionLogCallback(BaseCallback):
-    """Log shop action frequencies to TensorBoard."""
-
-    def __init__(self, verbose=0, n_actions=10):
-        super().__init__(verbose)
-        self.action_counts = [0] * n_actions
-
-    def _on_step(self) -> bool:
-        actions = self.locals.get("actions", [])
-        for a in actions:
-            idx = int(a)
-            if 0 <= idx < len(self.action_counts):
-                self.action_counts[idx] += 1
-
-        total = sum(self.action_counts)
-        if total > 0 and total % 1000 < len(actions):
-            self.logger.record("shop/skip_pct", 100 * self.action_counts[0] / total)
-            for i in range(1, 5):  # buy actions 1-4
-                self.logger.record(f"shop/buy_{i}_pct", 100 * self.action_counts[i] / total)
-            for i in range(5, len(self.action_counts)):  # sell actions 5-9
-                self.logger.record(f"shop/sell_{i-4}_pct", 100 * self.action_counts[i] / total)
-
-        return True
-
-
-class ResearchCallback(BaseCallback):
-    """
-    Log Balatro game metrics to TensorBoard, aggregated per episode.
-    Collects stats only when an episode finishes (done=True) and flushes
-    aggregated metrics to 'balatro/' at the end of each rollout.
-    """
-
-    def __init__(self, verbose=0):
-        super().__init__(verbose)
-        self._ep_antes:  list[float] = []
-        self._ep_wins:   list[float] = []
-        self._ep_rounds: list[float] = []
-
-    def _on_step(self) -> bool:
-        infos = self.locals.get("infos", [])
-        dones = self.locals.get("dones", [])
-
-        for info, done in zip(infos, dones):
-            if done:
-                ante          = int(info.get("ante_reached", info.get("ante", 1)))
-                won           = float(info.get("won", False))
-                rounds_beaten = max(0, int(info.get("round", 1)) - 1)
-
-                self._ep_antes.append(ante)
-                self._ep_wins.append(won)
-                self._ep_rounds.append(rounds_beaten)
-
-        return True
-
-    def _on_rollout_end(self) -> None:
-        if not self._ep_antes:
-            return
-
-        self.logger.record("balatro/mean_ante_reached",  np.mean(self._ep_antes))
-        self.logger.record("balatro/max_ante_reached",   float(np.max(self._ep_antes)))
-        self.logger.record("balatro/win_rate",           np.mean(self._ep_wins))
-        self.logger.record("balatro/mean_rounds_beaten", np.mean(self._ep_rounds))
-
-        self._ep_antes  = []
-        self._ep_wins   = []
-        self._ep_rounds = []
-
-
-class _RunCheckpointCallback(CheckpointCallback):
-    """CheckpointCallback that auto-names files after the TensorBoard run."""
-
-    def __init__(self, save_freq: int, save_path: str):
-        super().__init__(save_freq=save_freq, save_path=save_path, name_prefix="")
-        self._name_set = False
-
-    def _on_training_start(self) -> None:
-        # Extract run name from logger dir (e.g. "logs/PPO_1" → "PPO_1")
-        run_name = Path(self.model.logger.dir).name
-        self.name_prefix = run_name
-        self._name_set = True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -387,7 +115,7 @@ def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str
         )
 
     callbacks = [
-        _RunCheckpointCallback(
+        RunCheckpointCallback(
             save_freq   = CHECKPOINT_FREQ // len(ports),
             save_path   = MODEL_DIR,
         ),
@@ -401,7 +129,7 @@ def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str
         ),
         ShopActionLogCallback(),
         ResearchCallback(),
-        GameStatusCallback(),  # Added back again. This shows the game deck for every instance running, so we get to have an idea of what is going on even when the game is headlessly running.
+        GameStatusCallback(),
     ]
 
     print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
@@ -444,7 +172,7 @@ if __name__ == "__main__":
                         help="Run using jackdaw emulator (no Balatrobot needed)")
     
     args, unknown_args = parser.parse_known_args()
-    # unknown_args enthält z.B. ["--headless", "--fast"]
+    from instance_manager import BALATROBOT_FLAGS
     BALATROBOT_FLAGS.extend(unknown_args)
 
     PORTS = random.sample(range(10000, 65535), args.instances)
@@ -469,16 +197,6 @@ if __name__ == "__main__":
             exit(1)
         print(f"\n All {len(PORTS)} instances running\n")
         time.sleep(3)   # give games time to fully initialize
-
-    # Create save files
-    missing = [
-        p for p in PORTS
-        if not os.path.exists(os.path.join(SAVE_DIR, f"fresh_{p}.jkr"))
-    ]
-    if missing:
-        print("Creating save files...")
-        create_save_files(PORTS, SEEDS)
-        print()
 
     if args.setup_only:
         print("Setup complete. Run 'python train.py --no-launch' to train.")
