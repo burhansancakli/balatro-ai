@@ -1,8 +1,0 @@
-stable-baselines3
-gymnasium
-requests
-numpy
-tensorboard
-pytest
-tqdm
-stable-baselines3[extra]
