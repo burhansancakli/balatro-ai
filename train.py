@@ -17,7 +17,6 @@ from pathlib import Path
 import random
 import time
 import argparse
-import requests
 from typing import Any
 import numpy as np
 from stable_baselines3 import PPO
@@ -71,7 +70,7 @@ def make_env(port: int, seed: str, rank: int, backend=None):
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str = None, backends: list = None):
+def train(backends: list, ports: list, seeds: list, resume_path: str = None):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
@@ -162,8 +161,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--setup-only", action="store_true",
                         help="Only start instances and create save files")
-    parser.add_argument("--no-launch", action="store_true",
-                        help="Skip launching instances (if already running)")
     parser.add_argument("-n", "--instances", type=int, default=4,
                         help="Number of parallel Balatrobot instances (default: 4)")
     parser.add_argument("--resume", type=str, default=None,
@@ -178,28 +175,13 @@ if __name__ == "__main__":
     PORTS = random.sample(range(10000, 65535), args.instances)
     SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
-    # ── Emulator mode: use SimBackend, no Balatrobot needed ──
-    if args.emulator:
-        from emulator.bridge.backend import SimBackend
-        backends = [SimBackend() for _ in PORTS]
-        print(f"\n[Emulator] Launching {len(PORTS)} SimBackend instances...")
-        train(None, PORTS, SEEDS, resume_path=args.resume, backends=backends)
-        exit(0)
+    backends = BalatrobotManager(PORTS, emulator=args.emulator).start()
 
-    # ── Normal mode: launch Balatrobot instances ──
-    manager = BalatrobotManager(PORTS)
-
-    if not args.no_launch:
-        ok = manager.start_all()
-        if not ok:
-            print("\n Not all instances healthy. Check Balatrobot installation.")
-            manager.kill_all()
-            exit(1)
-        print(f"\n All {len(PORTS)} instances running\n")
-        time.sleep(3)   # give games time to fully initialize
+    print(f"\n All {len(PORTS)} instances ready\n")
+    time.sleep(3)   # give games time to fully initialize
 
     if args.setup_only:
-        print("Setup complete. Run 'python train.py --no-launch' to train.")
+        print("Setup complete. Run 'python train.py' to train.")
         exit(0)
 
-    train(manager, PORTS, SEEDS, resume_path=args.resume)
+    train(backends, PORTS, SEEDS, resume_path=args.resume)

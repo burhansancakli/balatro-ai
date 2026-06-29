@@ -18,7 +18,7 @@ from config import (
     POLL_INTERVAL, POLL_TIMEOUT,
     SURVIVAL_REWARD, PROGRESS_REWARD_SCALE, CASH_OUT_SETTLE_WAIT,
 )
-from emulator.bridge import LiveBackend, SimBackend
+from emulator.bridge import SimBackend
 from strategy import (
     Strategy,
     pick_best_action,
@@ -69,7 +69,7 @@ class BalatroEnv(gym.Env):
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
-        self.backend   = backend or LiveBackend(port=port)
+        self.backend   = backend
 
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0,

@@ -10,6 +10,8 @@ import subprocess
 import time
 import requests
 
+from emulator.bridge.backend import LiveBackend, SimBackend
+
 BALATROBOT_VERSION = "1.4.1"
 
 BALATROBOT_FLAGS = [
@@ -25,10 +27,14 @@ HEALTH_INTERVAL = 2
 
 
 class BalatrobotManager:
-    """Starts and manages N Balatrobot instances, one per port."""
+    """Starts and manages N Balatrobot instances, one per port.
 
-    def __init__(self, ports: list):
+    In emulator mode, no processes are launched — SimBackend is used instead.
+    """
+
+    def __init__(self, ports: list, emulator: bool = False):
         self.ports     = ports
+        self.emulator  = emulator
         self.processes = {}
         atexit.register(self.kill_all)
         signal.signal(signal.SIGINT,  self._signal_handler)
@@ -78,7 +84,11 @@ class BalatrobotManager:
         print(f"  timeout after {HEALTH_TIMEOUT}s")
         return False
 
-    def start_all(self) -> bool:
+    def start(self) -> list:
+        """Start instances and return backends. Exits on failure."""
+        if self.emulator:
+            return [SimBackend() for _ in self.ports]
+
         print(f"Starting {len(self.ports)} Balatrobot instances...\n")
         for port in self.ports:
             self.start_instance(port)
@@ -86,8 +96,10 @@ class BalatrobotManager:
         print()
         for port in self.ports:
             if not self.wait_healthy(port):
-                return False
-        return True
+                print("\n Not all instances healthy. Check Balatrobot installation.")
+                self.kill_all()
+                exit(1)
+        return [LiveBackend(port=port) for port in self.ports]
 
     def kill_instance(self, port: int):
         proc = self.processes.get(port)
