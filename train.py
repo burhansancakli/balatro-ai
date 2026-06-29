@@ -440,11 +440,8 @@ if __name__ == "__main__":
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to a saved model .zip to resume training from")
     
-    parser.add_argument(
-    "--emulator",
-    action="store_true",
-    help="Run using Jackdaw emulator"
-)
+    parser.add_argument( "--emulator", action="store_true", help="Run using Jackdaw emulator")
+    
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
     BALATROBOT_FLAGS.extend(unknown_args)
@@ -452,6 +449,14 @@ if __name__ == "__main__":
     PORTS = random.sample(range(10000, 65535), args.instances)
     SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
+    # EMULATOR PATH
+    if args.emulator:
+        print(f"\n[Emulator Mode] Launching {args.instances} Python emulator instances...")
+        # noneed external process management
+        train(None, PORTS, SEEDS)
+        exit(0)
+
+    # GAME PATH
     manager = BalatrobotManager(PORTS)
 
     if not args.no_launch and not args.emulator:

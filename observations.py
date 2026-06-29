@@ -115,7 +115,14 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
     for i in range(MAX_JOKER_SLOTS):
         base = 4 + i * 2
         if i < len(joker_cards):
-            label     = joker_cards[i].get("label", "")
+            card = joker_cards[i]
+            
+            # Handle Emulator raw card objects
+            if hasattr(card, "ability"):
+                label = card.ability.get("name", getattr(card, "center_key", ""))
+            else:
+                label = card.get("label", "") if isinstance(card, dict) else ""
+                
             joker_idx = JOKER_INDEX.get(label, -1)
             obs[base]     = float(joker_idx) / max(NUM_JOKERS - 1, 1) if joker_idx >= 0 else -1.0
             obs[base + 1] = 1.0
