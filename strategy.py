@@ -310,3 +310,171 @@ def strategy_coherence_reward(
     max_pref = max(prefs.values())
     pref = prefs.get(hand_type, 1)
     return pref / max_pref
+
+
+# ─────────────────────────────────────────────────────────────
+# MONTE CARLO DISCARDING HELPERS
+# ─────────────────────────────────────────────────────────────
+
+def get_remaining_deck(hand_cards: List[dict]) -> List[dict]:
+    """
+    Builds the remaining deck by removing the cards currently in hand
+    from a standard 52-card deck.
+    """
+    ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"]
+    suits = ["C", "D", "H", "S"]
+    deck = [{"rank": r, "suit": s} for r in ranks for s in suits]
+
+    hand_counts = {}
+    for c in hand_cards:
+        key = (c.get("rank", ""), c.get("suit", ""))
+        hand_counts[key] = hand_counts.get(key, 0) + 1
+
+    remaining = []
+    for c in deck:
+        key = (c["rank"], c["suit"])
+        if hand_counts.get(key, 0) > 0:
+            hand_counts[key] -= 1
+        else:
+            remaining.append(c)
+    return remaining
+
+
+def get_discard_candidates(
+    hand_cards: List[dict],
+    strategy: Strategy,
+    joker_labels: Optional[List[str]] = None,
+) -> List[List[int]]:
+    """
+    Generates a small list of candidate discard indices (subsets of hand indices).
+    Each candidate has 1 to 5 indices.
+    """
+    candidates = []
+    n = len(hand_cards)
+    if n == 0:
+        return candidates
+
+    # Get indices of current best play
+    best_play_indices, _, _ = pick_best_play(hand_cards, strategy, joker_labels=joker_labels)
+    best_play_set = set(best_play_indices)
+
+    # 1. Discard all unused cards (up to 5)
+    unused_indices = [i for i in range(n) if i not in best_play_set]
+    if 1 <= len(unused_indices) <= 5:
+        candidates.append(unused_indices)
+    elif len(unused_indices) > 5:
+        unused_sorted = sorted(unused_indices, key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
+        candidates.append(unused_sorted[:5])
+
+    # 2. Flush Hunt: For each suit, discard all cards in hand that do not belong to it
+    suits = ["C", "D", "H", "S"]
+    for s in suits:
+        non_suit_indices = [i for i in range(n) if hand_cards[i].get("suit") != s]
+        if 1 <= len(non_suit_indices) <= 5:
+            candidates.append(non_suit_indices)
+        elif len(non_suit_indices) > 5:
+            non_suit_sorted = sorted(non_suit_indices, key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
+            candidates.append(non_suit_sorted[:5])
+
+    # 3. Discard singletons (cards whose rank appears only once in hand)
+    rank_counts = {}
+    for c in hand_cards:
+        r = c.get("rank", "")
+        rank_counts[r] = rank_counts.get(r, 0) + 1
+    singleton_indices = [i for i in range(n) if rank_counts.get(hand_cards[i].get("rank", "")) == 1]
+    if 1 <= len(singleton_indices) <= 5:
+        candidates.append(singleton_indices)
+    elif len(singleton_indices) > 5:
+        singleton_sorted = sorted(singleton_indices, key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
+        candidates.append(singleton_sorted[:5])
+
+    # 4. Discard the 3, 4, or 5 lowest-ranking cards in hand
+    hand_sorted_indices = sorted(range(n), key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
+    for k in [3, 4, 5]:
+        if k <= n:
+            candidates.append(hand_sorted_indices[:k])
+
+    # Deduplicate candidates to avoid redundant simulations
+    unique_candidates = []
+    seen = set()
+    for cand in candidates:
+        cand_tuple = tuple(sorted(cand))
+        if cand_tuple not in seen:
+            seen.add(cand_tuple)
+            unique_candidates.append(list(cand_tuple))
+
+    return unique_candidates
+
+
+def evaluate_discard(
+    hand_cards: List[dict],
+    discard_indices: List[int],
+    remaining_deck: List[dict],
+    strategy: Strategy,
+    joker_labels: Optional[List[str]] = None,
+    num_simulations: int = 50,
+) -> float:
+    """
+    Simulates drawing cards to evaluate the EV of discarding a subset of cards.
+    """
+    import random
+    k = len(discard_indices)
+    if k == 0 or len(remaining_deck) < k:
+        return -1.0
+
+    kept_cards = [hand_cards[i] for i in range(len(hand_cards)) if i not in discard_indices]
+    total_score = 0.0
+
+    for _ in range(num_simulations):
+        drawn = random.sample(remaining_deck, k)
+        simulated_hand = kept_cards + drawn
+        _, _, score = pick_best_play(simulated_hand, strategy, joker_labels=joker_labels)
+        total_score += score
+
+    return total_score / num_simulations
+
+
+def pick_best_action(
+    hand_cards: List[dict],
+    strategy: Strategy,
+    discards_left: int,
+    joker_labels: Optional[List[str]] = None,
+    num_simulations: int = 50,
+) -> Tuple[str, List[int], Optional[str]]:
+    """
+    Decides whether to play or discard using Monte Carlo evaluation of discard candidates.
+    Returns: (action_type, indices, hand_type) where action_type is "play" or "discard",
+             indices are 0-based indices into hand_cards, and hand_type is the classified
+             play hand type (or None if discarding).
+    """
+    joker_labels = joker_labels or []
+    play_indices, play_hand, play_score = pick_best_play(hand_cards, strategy, joker_labels=joker_labels)
+
+    if discards_left <= 0:
+        return "play", play_indices, play_hand
+
+    remaining_deck = get_remaining_deck(hand_cards)
+    candidates = get_discard_candidates(hand_cards, strategy, joker_labels=joker_labels)
+
+    best_discard_indices = []
+    best_discard_ev = -1.0
+
+    for cand in candidates:
+        ev = evaluate_discard(
+            hand_cards=hand_cards,
+            discard_indices=cand,
+            remaining_deck=remaining_deck,
+            strategy=strategy,
+            joker_labels=joker_labels,
+            num_simulations=num_simulations,
+        )
+        if ev > best_discard_ev:
+            best_discard_ev = ev
+            best_discard_indices = cand
+
+    # Discard if expected value of discarding is strictly greater than playing immediately
+    if best_discard_ev > play_score:
+        return "discard", best_discard_indices, None
+
+    return "play", play_indices, play_hand
+

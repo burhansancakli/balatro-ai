@@ -20,6 +20,7 @@ from strategy import (
     parse_cards_from_gamestate,
     parse_jokers_from_gamestate,
     strategy_coherence_reward,
+    pick_best_action,
 )
 from observations import gamestate_to_observation, OBS_SIZE, MAX_SHOP_SLOTS, MAX_JOKER_SLOTS
 
@@ -400,7 +401,7 @@ class BalatroEnv(gym.Env):
         return total_reward, state, True, hand_logs
 
     def _play_hand(self, state: dict, strategy: Strategy) -> Tuple[dict, float, str]:
-        """Use calculator to pick and play the best hand."""
+        """Use calculator to pick and play the best hand or discard cards."""
         hand_cards = parse_cards_from_gamestate(state)
         joker_labels = parse_jokers_from_gamestate(state)
 
@@ -411,26 +412,50 @@ class BalatroEnv(gym.Env):
                 pass
             return state, 0.0, ""
 
-        indices, hand_type, _ = pick_best_play(hand_cards, strategy)
-        played_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
-        hand_summary = (
-            f"[seed {self.seed}] ante={state.get('ante_num','?')} "
-            f"round={state.get('round_num','?')} strategy={strategy.name} "
-            f"hand={hand_type} played=[{', '.join(played_cards)}]"
+        round_info = state.get("round", {}) or {}
+        discards_left = int(round_info.get("discards_left", 0) or 0)
+
+        action_type, indices, hand_type = pick_best_action(
+            hand_cards, strategy, discards_left, joker_labels=joker_labels
         )
 
-        try:
-            new_state = self.client.call("play", {"cards": indices})
-        except Exception:
-            # If play times out, poll until stable state
-            new_state = self.client.poll_until([
-                "SELECTING_HAND", "ROUND_EVAL", "GAME_OVER"
-            ])
+        if action_type == "discard":
+            discarded_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
+            action_summary = (
+                f"[seed {self.seed}] ante={state.get('ante_num','?')} "
+                f"round={state.get('round_num','?')} strategy={strategy.name} "
+                f"action=discard discarded=[{', '.join(discarded_cards)}]"
+            )
 
-        coherence = strategy_coherence_reward(hand_type, strategy)
-        reward    = coherence * 0.1 + self._progress_reward(new_state)
+            try:
+                new_state = self.client.call("discard", {"cards": indices})
+            except Exception:
+                # If discard times out, poll until stable state
+                new_state = self.client.poll_until([
+                    "SELECTING_HAND", "ROUND_EVAL", "GAME_OVER"
+                ])
 
-        return new_state, reward, hand_summary
+            return new_state, 0.0, action_summary
+        else:
+            played_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
+            hand_summary = (
+                f"[seed {self.seed}] ante={state.get('ante_num','?')} "
+                f"round={state.get('round_num','?')} strategy={strategy.name} "
+                f"hand={hand_type} played=[{', '.join(played_cards)}]"
+            )
+
+            try:
+                new_state = self.client.call("play", {"cards": indices})
+            except Exception:
+                # If play times out, poll until stable state
+                new_state = self.client.poll_until([
+                    "SELECTING_HAND", "ROUND_EVAL", "GAME_OVER"
+                ])
+
+            coherence = strategy_coherence_reward(hand_type, strategy)
+            reward    = coherence * 0.1 + self._progress_reward(new_state)
+
+            return new_state, reward, hand_summary
 
     def _execute_shop_action(self, state: dict, action: int) -> float:
         """Execute the agent's shop action.

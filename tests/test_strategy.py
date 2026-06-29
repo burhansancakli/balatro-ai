@@ -3,6 +3,10 @@ from strategy import (
     parse_jokers_from_gamestate,
     pick_best_play,
     strategy_coherence_reward,
+    get_remaining_deck,
+    get_discard_candidates,
+    evaluate_discard,
+    pick_best_action,
 )
 
 
@@ -101,3 +105,71 @@ def test_parse_jokers_from_gamestate():
     }
 
     assert parse_jokers_from_gamestate(state) == ["Joker", "Abstract Joker"]
+
+
+def test_get_remaining_deck():
+    hand = [
+        {"rank": "A", "suit": "S"},
+        {"rank": "K", "suit": "S"},
+        {"rank": "Q", "suit": "S"},
+        {"rank": "J", "suit": "S"},
+        {"rank": "T", "suit": "S"},
+    ]
+    deck = get_remaining_deck(hand)
+    assert len(deck) == 47
+    for card in hand:
+        assert card not in deck
+
+
+def test_get_discard_candidates():
+    hand = [
+        {"rank": "A", "suit": "S"},
+        {"rank": "K", "suit": "S"},
+        {"rank": "Q", "suit": "S"},
+        {"rank": "J", "suit": "S"},
+        {"rank": "2", "suit": "H"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+        {"rank": "5", "suit": "S"},
+    ]
+    candidates = get_discard_candidates(hand, Strategy.FLUSH_BUILD)
+    assert len(candidates) > 0
+    for cand in candidates:
+        assert isinstance(cand, list)
+        assert 1 <= len(cand) <= 5
+        for idx in cand:
+            assert 0 <= idx < len(hand)
+
+
+def test_pick_best_action_no_discards_left():
+    hand = [
+        {"rank": "A", "suit": "S"},
+        {"rank": "A", "suit": "H"},
+        {"rank": "Q", "suit": "S"},
+        {"rank": "J", "suit": "S"},
+        {"rank": "2", "suit": "H"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+        {"rank": "5", "suit": "S"},
+    ]
+    action_type, indices, hand_type = pick_best_action(hand, Strategy.PAIR_BUILD, discards_left=0)
+    assert action_type == "play"
+    assert hand_type == "pair"
+    assert {0, 1}.issubset(set(indices))
+
+
+def test_pick_best_action_flush_hunt():
+    hand = [
+        {"rank": "A", "suit": "H"},
+        {"rank": "K", "suit": "H"},
+        {"rank": "Q", "suit": "H"},
+        {"rank": "J", "suit": "H"},
+        {"rank": "2", "suit": "S"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+        {"rank": "5", "suit": "C"},
+    ]
+    action_type, indices, hand_type = pick_best_action(hand, Strategy.FLUSH_BUILD, discards_left=2, num_simulations=100)
+    assert action_type == "discard"
+    assert set(indices).issubset({4, 5, 6, 7})
+
