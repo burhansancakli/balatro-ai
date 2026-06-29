@@ -6,3 +6,4 @@ balatro_saves/
 __pycache__/
 benchmark_game_saves/
 models/
+*.egg-info
