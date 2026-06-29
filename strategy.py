@@ -302,19 +302,9 @@ def parse_jokers_from_gamestate(gamestate: dict) -> List[str]:
     
     labels = []
     for card in raw_cards:
-
-        # Emulator raw card objects
-        if hasattr(card, "ability"):
-            label = card.ability.get("name", getattr(card, "center_key", ""))
-            if label:
-                labels.append(label)
-            continue
-            
-        # Standard gamestate dictonariess
-        if isinstance(card, dict):
-            label = card.get("label", "") or card.get("name", "")
-            if label:
-                labels.append(label)
+        label = card.get("label", "") or card.get("name", "")
+        if label:
+            labels.append(label)
     return labels
 
 

@@ -232,11 +232,11 @@ def create_save_files(ports: list, seeds: list):
 # ENV FACTORY
 # ─────────────────────────────────────────────────────────────
 
-def make_env(port: int, seed: str, rank: int):
+def make_env(port: int, seed: str, rank: int, backend=None):
     save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
-        env = BalatroEnv(port=port, save_path=save_path, seed=seed, emulator=args.emulator)
+        env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
         env.reset(seed=rank)
         return env
 
@@ -334,20 +334,20 @@ class _RunCheckpointCallback(CheckpointCallback):
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str = None):
+def train(manager: BalatrobotManager, ports: list, seeds: list, resume_path: str = None, backends: list = None):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
     print(f"\nBuilding {len(ports)} parallel environments...")
     env_fns: Any = [
-        make_env(port, seed, rank)
+        make_env(port, seed, rank, backend=backends[rank] if backends else None)
         for rank, (port, seed) in enumerate(zip(ports, seeds))
     ]
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
     print(f" Environments ready")
 
-    eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99)])
+    eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
     eval_env = VecMonitor(eval_env)
 
     if resume_path:
@@ -431,8 +431,8 @@ if __name__ == "__main__":
                         help="Number of parallel Balatrobot instances (default: 4)")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to a saved model .zip to resume training from")
-    
-    parser.add_argument( "--emulator", action="store_true", help="Run using Jackdaw emulator")
+    parser.add_argument("--emulator", action="store_true",
+                        help="Run using jackdaw emulator (no Balatrobot needed)")
     
     args, unknown_args = parser.parse_known_args()
     # unknown_args enthält z.B. ["--headless", "--fast"]
@@ -441,17 +441,18 @@ if __name__ == "__main__":
     PORTS = random.sample(range(10000, 65535), args.instances)
     SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
-    # EMULATOR PATH
+    # ── Emulator mode: use SimBackend, no Balatrobot needed ──
     if args.emulator:
-        print(f"\n[Emulator Mode] Launching {args.instances} Python emulator instances...")
-        # noneed external process management
-        train(None, PORTS, SEEDS)
+        from emulator.bridge.backend import SimBackend
+        backends = [SimBackend() for _ in PORTS]
+        print(f"\n[Emulator] Launching {len(PORTS)} SimBackend instances...")
+        train(None, PORTS, SEEDS, resume_path=args.resume, backends=backends)
         exit(0)
 
-    # GAME PATH
+    # ── Normal mode: launch Balatrobot instances ──
     manager = BalatrobotManager(PORTS)
 
-    if not args.no_launch and not args.emulator:
+    if not args.no_launch:
         ok = manager.start_all()
         if not ok:
             print("\n Not all instances healthy. Check Balatrobot installation.")

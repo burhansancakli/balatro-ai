@@ -14,22 +14,13 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Tuple
 
-
-try:
-    from emulator.env.balatro_env import BalatroEnvironment
-    from emulator.env.game_interface import DirectAdapter
-    JACKDAW_AVAILABLE = True
-except Exception:
-    JACKDAW_AVAILABLE = False
-
-
 from strategy import (
     Strategy,
     pick_best_play,
+    pick_best_action,
     parse_cards_from_gamestate,
     parse_jokers_from_gamestate,
     strategy_coherence_reward,
-    pick_best_action,
 )
 from observations import gamestate_to_observation, OBS_SIZE, MAX_SHOP_SLOTS, MAX_JOKER_SLOTS
 
@@ -73,17 +64,28 @@ TRANSITIONAL_STATES = {
 # ─────────────────────────────────────────────────────────────
 
 class BalatrobotClient:
-    """Thin JSON-RPC client with retry logic for one Balatrobot instance."""
+    """Thin JSON-RPC client with retry logic for one Balatrobot instance.
 
-    def __init__(self, port: int):
-        self.url  = f"http://127.0.0.1:{port}"
-        self.port = port
+    Can optionally wrap a SimBackend instead of making HTTP calls.
+    """
+
+    def __init__(self, port: int, backend=None):
+        self.url     = f"http://127.0.0.1:{port}"
+        self.port    = port
+        self.backend = backend
 
     def call(self, method: str, params: dict = {}) -> dict:
         """
         Call a Balatrobot RPC method with automatic retry on timeout.
         Raises RuntimeError if all retries fail.
         """
+        if self.backend is not None:
+            # SimBackend uses "start" instead of "load"
+            if method == "load":
+                seed = Path(params.get("path", "")).stem.replace("fresh_", "")
+                return self.backend.handle("start", {"deck": DECK, "stake": STAKE, "seed": seed or "DEFAULT"})
+            return self.backend.handle(method, params)
+
         last_error = None
         for attempt in range(RPC_RETRIES):
             try:
@@ -124,6 +126,9 @@ class BalatrobotClient:
         Poll gamestate until one of the target states is reached.
         Automatically skips through known transitional states.
         """
+        if self.backend is not None:
+            return self.call("gamestate")
+
         deadline = time.time() + timeout
         last_state = None
 
@@ -186,23 +191,13 @@ class BalatroEnv(gym.Env):
         save_path: str = Path.cwd() / "fresh_balatro.jkr",
         seed: str = SEED,
         render_mode: Optional[str] = None,
-        emulator: bool = False,
+        backend=None,
     ):
         super().__init__()
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
-        self.emulator = emulator
-        
-        if emulator:
-            if not JACKDAW_AVAILABLE:
-                raise RuntimeError("Jackdaw emulator not installed")
-
-            self.sim = BalatroEnvironment(
-                adapter_factory=DirectAdapter
-            )
-        else:
-            self.client = BalatrobotClient(port)
+        self.client    = BalatrobotClient(port, backend=backend)
 
 
         self.observation_space = spaces.Box(
@@ -226,20 +221,6 @@ class BalatroEnv(gym.Env):
         options: Optional[dict] = None,
     ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
-
-        if self.emulator:
-            # The emulator returns 3 values (obs, mask, info), not 2!
-            try:
-                obs, mask, info = self.sim.reset(seed=seed)
-            except TypeError:
-                obs, mask, info = self.sim.reset()
-            
-            # Access the raw state directly from the adapter
-            state = self.sim._adapter.raw_state
-            self.last_state = state
-            
-            obs_vector = gamestate_to_observation(state)
-            return np.asarray(obs_vector, dtype=np.float32), info
 
         # Fast reset via load() — 6.75x faster than start()
         self.client.call("load", {"path": self.save_path})
@@ -285,84 +266,6 @@ class BalatroEnv(gym.Env):
         }
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
-        # --- SAFEGUARD: Convert NumPy array scalar / list action into a standard Python int ---
-        if hasattr(action, "item"):
-            action = int(action.item())
-        elif isinstance(action, (list, np.ndarray)):
-            action = int(action[0])
-        else:
-            action = int(action)
-        
-        if self.emulator:
-            from emulator.engine.actions import PlayHand, Discard, SelectBlind, CashOut, NextRound, SkipPack
-            strategy = Strategy(action)
-            info = {}
-
-            # Talk directly to the underlying DirectAdapter to avoid FactoredAction crashes
-            while True:
-                state = self.sim._adapter.raw_state
-                self.last_state = state
-
-                terminated = self.sim._adapter.done
-                truncated = self.sim._step_count >= self.sim._max_steps
-                won = self.sim._adapter.won
-
-                # Terminal checks
-                if terminated or truncated:
-                    info["game_over"] = terminated
-                    info["won"] = won
-                    info["ante"] = self.sim.episode_ante
-                    info["ante_reached"] = self.sim.episode_ante
-                    reward = self._jackdaw_reward(info)
-                    return np.asarray(gamestate_to_observation(state), dtype=np.float32), reward, terminated, truncated, info
-
-                # DirectAdapter natively provides legal actions!
-                legal_actions = self.sim._adapter.get_legal_actions()
-                chosen_action = None
-
-                # Automatically handle administrative selection phases
-                for a in legal_actions:
-                    if isinstance(a, (SelectBlind, CashOut, NextRound, SkipPack)):
-                        chosen_action = a
-                        break
-
-                # Map strategy to cards
-                if chosen_action is None:
-                    hand_cards = parse_cards_from_gamestate(state)
-                    jokers = parse_jokers_from_gamestate(state)
-                    indices, hand_type, _ = pick_best_play(
-                        hand_cards=hand_cards, 
-                        strategy=strategy, 
-                        joker_labels=jokers
-                    )
-
-                    if not indices and hand_cards:
-                        indices = [0]
-
-                    # jsut like for real game
-                    chosen_action = PlayHand(card_indices=tuple(sorted(indices)))
-
-                if chosen_action is None and legal_actions:
-                    chosen_action = legal_actions[0]
-                elif chosen_action is None:
-                    break
-
-                # Step the adapter directly using low-level Action objects
-                self.sim._adapter.step(chosen_action)
-                self.sim._step_count += 1
-                
-                next_state = self.sim._adapter.raw_state
-
-                # Return control to PPO when entering a new selection phase
-                phase = next_state.get("phase")
-                if phase in ["SHOP", "BLIND_SELECT", "MAIN_MENU"] or self.sim._adapter.done:
-                    info["game_over"] = self.sim._adapter.done
-                    info["won"] = self.sim._adapter.won
-                    info["ante"] = next_state.get("round_resets", {}).get("ante", 1)
-                    info["ante_reached"] = info["ante"]
-                    reward = self._jackdaw_reward(info)
-                    return np.asarray(gamestate_to_observation(next_state), dtype=np.float32), reward, self.sim._adapter.done, truncated, info
-
         assert self.action_space.contains(action), f"Invalid action: {action}"
         self._steps += 1
 
@@ -693,29 +596,3 @@ class BalatroEnv(gym.Env):
             return 2.0
 
         return max(0.0, (ante - 1) * 0.2)
-    
-
-    def _jackdaw_reward(self, info: dict) -> float:
-        """
-        Calculates the reward for emulator steps. 
-        Mirrors the sparse outcome reward logic from the actual game wrapper.
-        """
-        # Align these keys with whatever your Jackdaw sim actually outputs in `info`
-        ante = info.get("ante_reached", info.get("ante", 1))
-        won = info.get("won", False)
-        game_over = info.get("game_over", False) or info.get("terminated", False)
-        
-        # If Jackdaw's wrapper natively calculates a step reward, grab it
-        base_reward = info.get("reward", 0.0)
-
-        # Terminal state rewards
-        if game_over and not won:
-            if ante <= 1:
-                return base_reward - 0.5
-            return base_reward + (ante - 1) * 0.2
-
-        if won:
-            return base_reward + 2.0
-
-        # Ongoing step reward (optional: add progress logic if Jackdaw supports it)
-        return base_reward
