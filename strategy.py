@@ -18,6 +18,8 @@ from enum import IntEnum
 from itertools import combinations
 from typing import List, Tuple, Optional
 
+import numpy as np
+
 
 # ─────────────────────────────────────────────────────────────
 # STRATEGY DEFINITIONS
@@ -191,6 +193,223 @@ def _apply_joker(
     return chips, mult
 
 
+# ─────────────────────────────────────────────────────────────
+# FAST INTEGER-BASED HAND CLASSIFICATION (numpy)
+# ─────────────────────────────────────────────────────────────
+
+_RANK_ORDER = ("2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A")
+_RANK_TO_INT = {r: i for i, r in enumerate(_RANK_ORDER)}
+_SUIT_TO_INT = {"C": 0, "D": 1, "H": 2, "S": 3}
+
+# Valid 5-card straight patterns (set of rank indices)
+_STRAIGHT_SETS = (
+    frozenset(range(0, 5)),    # 2-6
+    frozenset(range(1, 6)),    # 3-7
+    frozenset(range(2, 7)),    # 4-8
+    frozenset(range(3, 8)),    # 5-9
+    frozenset(range(4, 9)),    # 6-T
+    frozenset(range(5, 10)),   # 7-J
+    frozenset(range(6, 11)),   # 8-Q
+    frozenset(range(7, 12)),   # 9-K
+    frozenset(range(8, 13)),   # T-A
+    frozenset((12, 0, 1, 2, 3)),  # A-5 (ace-low)
+)
+
+
+def _cards_to_ints(hand_cards: List[dict]) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert card dicts to rank/suit integer arrays once."""
+    n = len(hand_cards)
+    ranks = np.empty(n, dtype=np.intp)
+    suits = np.empty(n, dtype=np.intp)
+    for i, c in enumerate(hand_cards):
+        ranks[i] = _RANK_TO_INT.get(c["rank"], -1)
+        suits[i] = _SUIT_TO_INT.get(c["suit"], -1)
+    return ranks, suits
+
+
+def _classify_ints(ranks: np.ndarray, n: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute rank counts from pre-computed rank integer array.
+
+    Returns ``(counts, sorted_nonzero_counts)`` where ``counts`` is a
+    length-13 array of rank frequencies and ``sorted_nonzero_counts``
+    is the non-zero counts sorted descending.
+    """
+    # Flush: n==5 and all suits equal — checked via rank array slice in caller
+    # (suits checked externally for speed; is_flush passed in)
+
+    # Rank counts via bincount — no Python dict allocation
+    counts = np.bincount(np.maximum(ranks, 0), minlength=13)
+    nonzero = counts[counts > 0]
+    sorted_counts = np.sort(nonzero)[::-1]
+    return counts, sorted_counts
+
+
+def _is_flush(suits: np.ndarray) -> bool:
+    return len(suits) == 5 and bool(suits[0] == suits[1] == suits[2] == suits[3] == suits[4])
+
+
+def _is_straight_fast(rank_set: frozenset) -> bool:
+    return rank_set in _STRAIGHT_SETS
+
+
+def _hand_type_from_counts(sorted_counts: np.ndarray, is_flush: bool, is_straight: bool, n: int) -> str:
+    """Determine hand type from pre-sorted count array — pure integer comparison."""
+    if n == 5 and is_flush:
+        if sorted_counts[0] == 5:
+            return "flush_five"
+        if sorted_counts[0] == 3 and len(sorted_counts) == 2:
+            return "flush_house"
+
+    if n == 5 and sorted_counts[0] == 5:
+        return "five_of_a_kind"
+
+    if is_flush and is_straight:
+        return "straight_flush"
+
+    if n >= 4 and sorted_counts[0] == 4:
+        return "four_of_a_kind"
+
+    if n == 5 and sorted_counts[0] == 3 and len(sorted_counts) == 2:
+        return "full_house"
+
+    if is_flush:
+        return "flush"
+    if is_straight:
+        return "straight"
+
+    if sorted_counts[0] == 3:
+        return "three_of_a_kind"
+    if len(sorted_counts) >= 2 and sorted_counts[0] == 2 and sorted_counts[1] == 2:
+        return "two_pair"
+    if sorted_counts[0] == 2:
+        return "pair"
+    return "high_card"
+
+
+def _apply_jokers_ints(
+    label: str,
+    sub_ranks: np.ndarray,
+    sub_suits: np.ndarray,
+    n: int,
+    hand_type: str,
+    is_flush: bool,
+    counts: np.ndarray,
+    chips: int,
+    mult: int,
+    n_jokers: int,
+) -> Tuple[int, int]:
+    """Apply one joker effect using integer arrays — avoids dict lookups."""
+    has_pair = bool(np.any(counts >= 2))
+    has_three = bool(np.any(counts >= 3))
+    has_two_pair = bool(np.sum(counts >= 2) >= 2)
+
+    if label == "Droll Joker" and is_flush:
+        mult += 10
+    elif label == "Crafty Joker" and is_flush:
+        chips += 80
+    elif label == "Lusty Joker":
+        mult += 3 * int(np.sum(sub_suits == 2))  # Hearts
+    elif label == "Greedy Joker":
+        mult += 3 * int(np.sum(sub_suits == 1))  # Diamonds
+    elif label == "Jolly Joker" and has_pair:
+        mult += 8
+    elif label == "Zany Joker" and has_three:
+        mult += 12
+    elif label == "Mad Joker" and has_two_pair:
+        mult += 10
+    elif label == "Sly Joker" and has_pair:
+        chips += 50
+    elif label == "Wily Joker" and has_three:
+        chips += 100
+    elif label == "Joker":
+        mult += 4
+    elif label == "Abstract Joker":
+        mult += 3 * n_jokers
+    elif label == "Half Joker" and n <= 3:
+        mult += 20
+    elif label == "Scary Face":
+        chips += 30 * int(np.sum(np.isin(sub_ranks, (9, 10, 11))))  # J, Q, K
+
+    return chips, mult
+
+
+def _score_hand_ints(
+    all_ranks: np.ndarray,
+    all_suits: np.ndarray,
+    combo_idx: np.ndarray,
+    joker_labels: Tuple[str, ...],
+    n_jokers: int,
+) -> Tuple[str, int]:
+    """Score a combination using pre-computed integer arrays — zero dict allocation."""
+    n = len(combo_idx)
+    sub_ranks = all_ranks[combo_idx]
+    sub_suits = all_suits[combo_idx]
+
+    # Flush + straight
+    fl = _is_flush(sub_suits)
+    counts, sorted_counts = _classify_ints(sub_ranks, n)
+    rank_set = frozenset(sub_ranks.tolist())
+    st = _is_straight_fast(rank_set) if n == 5 and len(sorted_counts) == 5 else False
+
+    hand_type = _hand_type_from_counts(sorted_counts, fl, st, n)
+    chips, mult = HAND_SCORES[hand_type]
+
+    # Sum chip values: rank index i → value i+2 (2..14)
+    chips += int(np.sum(sub_ranks) + n * 2)
+
+    # Apply jokers
+    for label in joker_labels:
+        chips, mult = _apply_jokers_ints(
+            label, sub_ranks, sub_suits, n, hand_type, fl, counts, chips, mult, n_jokers,
+        )
+
+    return hand_type, chips * mult
+
+
+def _pick_best_play_fast(
+    hand_cards: List[dict],
+    strategy: Strategy,
+    n_play: int = 5,
+    joker_labels: Optional[List[str]] = None,
+) -> Tuple[List[int], str, int]:
+    """Fast pick_best_play using pre-computed integer arrays."""
+    n = len(hand_cards)
+    if n == 0:
+        return [], "high_card", 0
+
+    all_ranks, all_suits = _cards_to_ints(hand_cards)
+    jk = tuple(joker_labels or [])
+    n_jk = len(jk)
+    prefs = STRATEGY_PREFERRED_HANDS[strategy]
+
+    max_play = min(n_play, n)
+    play_sizes = [max_play]
+    if "Half Joker" in jk:
+        play_sizes = list(range(1, max_play + 1))
+
+    best_indices = list(range(max_play))
+    best_score = -1
+    best_hand = "high_card"
+
+    for size in play_sizes:
+        for combo in combinations(range(n), size):
+            combo_idx = np.asarray(combo, dtype=np.intp)
+            hand_type, score = _score_hand_ints(all_ranks, all_suits, combo_idx, jk, n_jk)
+            preference = prefs.get(hand_type, 1)
+
+            if strategy == Strategy.MULT_BUILD:
+                weighted_score = score
+            else:
+                weighted_score = preference * 10000 + score
+
+            if weighted_score > best_score:
+                best_score = weighted_score
+                best_indices = list(combo)
+                best_hand = hand_type
+
+    return best_indices, best_hand, best_score
+
+
 # Strategy-specific hand type preferences
 STRATEGY_PREFERRED_HANDS = {
     Strategy.FLUSH_BUILD: {
@@ -224,6 +443,8 @@ def pick_best_play(
     """
     Given a list of card dicts and a strategy, return the best play.
 
+    Uses the fast integer-based path for performance.
+
     Args:
         hand_cards: list of card dicts from Balatrobot gamestate.
                     Each dict has keys: rank (str), suit (str).
@@ -235,40 +456,7 @@ def pick_best_play(
         (card_indices, hand_type, estimated_score)
         card_indices: list of indices into hand_cards to play.
     """
-    n = len(hand_cards)
-    if n == 0:
-        return [], "high_card", 0
-
-    joker_labels = joker_labels or []
-    max_play = min(n_play, n)
-    play_sizes = [max_play]
-    if "Half Joker" in joker_labels:
-        play_sizes = list(range(1, max_play + 1))
-
-    best_indices  = list(range(max_play))
-    best_score    = -1
-    best_hand     = "high_card"
-    prefs         = STRATEGY_PREFERRED_HANDS[strategy]
-
-    for size in play_sizes:
-        for combo in combinations(range(n), size):
-            cards = [hand_cards[i] for i in combo]
-            hand_type, base_score = _score_hand(cards, joker_labels)
-            preference = prefs.get(hand_type, 1)
-
-            if strategy == Strategy.MULT_BUILD:
-                # Pure score maximizer
-                weighted_score = base_score
-            else:
-                # Blend: heavily weight strategy preference, lightly weight score
-                weighted_score = preference * 10000 + base_score
-
-            if weighted_score > best_score:
-                best_score   = weighted_score
-                best_indices = list(combo)
-                best_hand    = hand_type
-
-    return best_indices, best_hand, best_score
+    return _pick_best_play_fast(hand_cards, strategy, n_play, joker_labels)
 
 
 def parse_cards_from_gamestate(gamestate: dict) -> List[dict]:
@@ -439,7 +627,7 @@ def pick_best_action(
     strategy: Strategy,
     discards_left: int,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 50,
+    num_simulations: int = 15,
 ) -> Tuple[str, List[int], Optional[str]]:
     """
     Decides whether to play or discard using Monte Carlo evaluation of discard candidates.
