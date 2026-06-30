@@ -13,11 +13,13 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 from sb3_contrib import MaskablePPO
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
 from jackdaw.env.game_interface import DirectAdapter, SimplifiedDirectAdapter
 from jackdaw.env.gymnasium_wrapper import BalatroGymnasiumEnv
@@ -50,6 +52,57 @@ class BalatroMetricsCallback(BaseCallback):
         self._antes.clear()
         self._rounds.clear()
         self._wins.clear()
+
+
+class ETACallback(BaseCallback):
+    """Print a compact ETA line to the terminal after every rollout."""
+
+    def __init__(self, total_timesteps: int, print_every: int = 1) -> None:
+        super().__init__(verbose=0)
+        self._total = total_timesteps
+        self._print_every = print_every  # rollouts between prints
+        self._rollout_count = 0
+        self._start: float = 0.0
+
+    def _on_training_start(self) -> None:
+        self._start = time.monotonic()
+
+    def _on_rollout_end(self) -> None:
+        self._rollout_count += 1
+        if self._rollout_count % self._print_every != 0:
+            return
+
+        elapsed = time.monotonic() - self._start
+        step = self.num_timesteps
+        total = self._total
+
+        pct = step / total * 100
+        sps = step / elapsed if elapsed > 0 else 0
+        remaining_s = (total - step) / sps if sps > 0 else 0
+
+        eta_wall = datetime.now() + timedelta(seconds=remaining_s)
+        eta_str = eta_wall.strftime("%H:%M:%S")
+
+        def fmt_time(s: float) -> str:
+            s = int(s)
+            h, m = divmod(s, 3600)
+            m, sec = divmod(m, 60)
+            return f"{h}h{m:02d}m{sec:02d}s" if h else f"{m}m{sec:02d}s"
+
+        bar_width = 20
+        filled = int(bar_width * pct / 100)
+        bar = "█" * filled + "░" * (bar_width - filled)
+
+        print(
+            f"  [{bar}] {pct:5.1f}%  "
+            f"{step:>{len(str(total))},.0f} / {total:,.0f}  |  "
+            f"{sps:,.0f} steps/s  |  "
+            f"elapsed {fmt_time(elapsed)}  |  "
+            f"ETA {fmt_time(remaining_s)} ({eta_str})"
+        )
+
+    def _on_step(self) -> bool:
+        return True
 
 
 def make_env(
@@ -118,9 +171,11 @@ def main() -> None:
 
     env_label = "simplified" if args.simplified else "standard"
     rec_note = f"  recording → {args.record_dir}" if args.record_dir else ""
-    print(f"Training for {args.total_timesteps} timesteps  [{env_label} env]{rec_note}...")
+    print(f"Training for {args.total_timesteps:,} timesteps  [{env_label} env]{rec_note}")
+    print()
     try:
-        model.learn(total_timesteps=args.total_timesteps, callback=BalatroMetricsCallback())
+        callbacks = CallbackList([BalatroMetricsCallback(), ETACallback(args.total_timesteps)])
+        model.learn(total_timesteps=args.total_timesteps, callback=callbacks)
     except KeyboardInterrupt:
         print("\nTraining interrupted — saving current model...")
 
