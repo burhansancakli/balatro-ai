@@ -32,9 +32,10 @@ class BalatrobotManager:
     In emulator mode, no processes are launched — SimBackend is used instead.
     """
 
-    def __init__(self, ports: list, emulator: bool = False):
+    def __init__(self, ports: list, emulator: bool = False, simplified: bool = False):
         self.ports     = ports
         self.emulator  = emulator
+        self.simplified = simplified
         self.processes = {}
         atexit.register(self.kill_all)
         signal.signal(signal.SIGINT,  self._signal_handler)
@@ -87,7 +88,7 @@ class BalatrobotManager:
     def start(self) -> list:
         """Start instances and return backends. Exits on failure."""
         if self.emulator:
-            return [SimBackend() for _ in self.ports]
+            return [SimBackend(simplified=self.simplified) for _ in self.ports]
 
         print(f"Starting {len(self.ports)} Balatrobot instances...\n")
         for port in self.ports:

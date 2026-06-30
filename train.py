@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 import torch
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
@@ -58,7 +58,7 @@ def make_env(port: int, seed: str, rank: int, backend=None):
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(backends: list, ports: list, seeds: list, resume_path: str = None):
+def train(backends: list, ports: list, seeds: list, resume_path: str = None, use_emulator: bool = False):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
@@ -67,11 +67,23 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None):
         make_env(port, seed, rank, backend=backends[rank] if backends else None)
         for rank, (port, seed) in enumerate(zip(ports, seeds))
     ]
-    vec_env = SubprocVecEnv(env_fns)
+
+    # DummyVecEnv is much faster with emulator — no IPC overhead needed
+    # since SimBackend runs in-process. SubprocVecEnv is only needed for
+    # real Balatrobot instances where each env talks to a separate process.
+    if use_emulator:
+        vec_env = DummyVecEnv(env_fns)
+        print(f"  Using DummyVecEnv (emulator mode — no IPC overhead)")
+    else:
+        vec_env = SubprocVecEnv(env_fns)
+        print(f"  Using SubprocVecEnv (live Balatrobot mode)")
     vec_env = VecMonitor(vec_env, LOG_DIR)
     print(f" Environments ready")
 
-    eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
+    if use_emulator:
+        eval_env = DummyVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
+    else:
+        eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
     eval_env = VecMonitor(eval_env)
 
     if torch.cuda.is_available():
@@ -172,13 +184,14 @@ if __name__ == "__main__":
     PORTS = random.sample(range(10000, 65535), args.instances)
     SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
 
-    backends = BalatrobotManager(PORTS, emulator=args.emulator).start()
+    backends = BalatrobotManager(PORTS, emulator=args.emulator, simplified=args.emulator).start()
 
     print(f"\n All {len(PORTS)} instances ready\n")
-    time.sleep(3)   # give games time to fully initialize
+    if not args.emulator:
+        time.sleep(3)   # give games time to fully initialize
 
     if args.setup_only:
         print("Setup complete. Run 'python train.py' to train.")
         exit(0)
 
-    train(backends, PORTS, SEEDS, resume_path=args.resume)
+    train(backends, PORTS, SEEDS, resume_path=args.resume, use_emulator=args.emulator)

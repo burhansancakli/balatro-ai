@@ -259,7 +259,8 @@ class BalatroEnv(gym.Env):
 
             # ── Cash out after round ────────────────────────────
             elif current == "ROUND_EVAL":
-                time.sleep(CASH_OUT_SETTLE_WAIT)
+                if not isinstance(self.backend, SimBackend):
+                    time.sleep(CASH_OUT_SETTLE_WAIT)
                 state = self._call("cash_out")
                 if state.get("state") != "GAME_OVER":
                     total_reward += SURVIVAL_REWARD
@@ -274,7 +275,8 @@ class BalatroEnv(gym.Env):
 
             # ── Transitional / unknown state ────────────────────
             else:
-                time.sleep(POLL_INTERVAL)
+                if not isinstance(self.backend, SimBackend):
+                    time.sleep(POLL_INTERVAL)
                 state = self._call("gamestate")
 
         # Safety: exceeded loop limit

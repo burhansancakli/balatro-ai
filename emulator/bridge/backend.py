@@ -111,10 +111,19 @@ _ACTION_METHODS = frozenset(
 
 
 class SimBackend:
-    """Backend that runs the jackdaw engine in-process."""
+    """Backend that runs the jackdaw engine in-process.
 
-    def __init__(self) -> None:
+    Parameters
+    ----------
+    simplified:
+        If True, apply simplified-env restrictions (joker whitelist,
+        no vouchers/boosters, fixed 4 hands/4 discards, boss blinds
+        disabled, SkipBlind removed from legal actions).
+    """
+
+    def __init__(self, *, simplified: bool = False) -> None:
         self._gs: dict[str, Any] | None = None
+        self._simplified = simplified
 
     def handle(self, method: str, params: dict[str, Any] | None) -> dict[str, Any]:
         if params is None:
@@ -160,6 +169,10 @@ class SimBackend:
         self._gs["phase"] = GamePhase.BLIND_SELECT
         self._gs["blind_on_deck"] = "Small"
 
+        if self._simplified:
+            from emulator.engine.simplified import apply_to_run
+            apply_to_run(self._gs)
+
         return self._serialize()
 
     def _handle_action(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -182,6 +195,10 @@ class SimBackend:
             step(self._gs, action)
         except IllegalActionError as exc:
             raise RPCError(NOT_ALLOWED, str(exc)) from exc
+
+        if self._simplified and self._gs.get("phase") == GamePhase.SHOP:
+            from emulator.engine.simplified import apply_to_shop
+            apply_to_shop(self._gs)
 
         return self._serialize()
 
