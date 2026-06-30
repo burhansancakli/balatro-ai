@@ -32,6 +32,7 @@ from config import (
     TOTAL_STEPS, N_STEPS, BATCH_SIZE, N_EPOCHS,
     LEARNING_RATE, GAMMA, EVAL_FREQ, CHECKPOINT_FREQ,
 )
+from emulator.bridge.backend import SimBackend
 from instance_manager import BalatrobotManager
 from shop_action_log_callback import ShopActionLogCallback
 from research_callback import ResearchCallback
@@ -81,7 +82,8 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None, use
     print(f" Environments ready")
 
     if use_emulator:
-        eval_env = DummyVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
+        eval_backend = SimBackend(simplified=True)
+        eval_env = DummyVecEnv([make_env(ports[0], seeds[0], 99, backend=eval_backend)])
     else:
         eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
     eval_env = VecMonitor(eval_env)
