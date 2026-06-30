@@ -104,8 +104,19 @@ class EpisodeRecorderWrapper(gym.Wrapper):
                 f.write(line + "\n")
 
     def _get_raw_state(self) -> dict[str, Any]:
-        """Walk the wrapper stack to reach the engine game_state dict."""
+        """Walk the wrapper stack to reach the engine game_state dict.
+        Handles the actual Jackdaw hierarchy:
+          EpisodeRecorderWrapper → BalatroGymnasiumEnv (self._inner)
+            → BalatroEnvironment (self._adapter)
+        """
         env = self.env
+        # Fast path: BalatroGymnasiumEnv stores BalatroEnvironment as _inner
+        if hasattr(env, "_inner"):
+            inner = env._inner
+            if hasattr(inner, "_adapter"):
+                return inner._adapter.raw_state
+            
+        # Generic fallback: look for .adapter at each wrapper level
         while hasattr(env, "env"):
             if hasattr(env, "adapter"):
                 return env.adapter.raw_state

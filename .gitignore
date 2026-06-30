@@ -8,3 +8,4 @@ benchmark_game_saves/
 models/
 *.egg-info
 .pytest_cache
+runs/

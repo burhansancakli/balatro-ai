@@ -219,7 +219,7 @@ def get_action_mask(game_state: dict[str, Any]) -> ActionMask:
     if phase == GamePhase.BLIND_SELECT:
         type_mask[ActionType.SelectBlind] = True
         blind_on_deck = game_state.get("blind_on_deck", "Small")
-        if blind_on_deck in ("Small", "Big"):
+        if blind_on_deck in ("Small", "Big") and not game_state.get("simplified"):
             type_mask[ActionType.SkipBlind] = True
         _mask_consumables(type_mask, entity_masks, game_state)
 

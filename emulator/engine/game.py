@@ -194,6 +194,10 @@ def _handle_select_blind(gs: dict[str, Any]) -> dict[str, Any]:
     rr["blind_states"][blind_on_deck] = "Current"
     rr["blind"] = blind
 
+    # Simplified env: disable boss blind effects before they can fire
+    if gs.get("simplified") and blind.boss:
+        blind.disabled = True
+
     # ------------------------------------------------------------------
     # 2. Fire joker setting_blind context
     # ------------------------------------------------------------------
@@ -267,6 +271,12 @@ def _handle_select_blind(gs: dict[str, Any]) -> dict[str, Any]:
     # 8. Phase → SELECTING_HAND
     # ------------------------------------------------------------------
     gs["phase"] = GamePhase.SELECTING_HAND
+    _log_action(gs, {
+        "type": "blind",
+        "name": blind.name,
+        "chips": blind.chips,
+        "boss": blind.boss,
+    })
     return gs
 
 
@@ -494,6 +504,12 @@ def _handle_skip_blind(gs: dict[str, Any]) -> dict[str, Any]:
     # Only return to BLIND_SELECT if a tag didn't open a pack
     if gs.get("phase") != GamePhase.PACK_OPENING:
         gs["phase"] = GamePhase.BLIND_SELECT
+
+    _log_action(gs, {
+        "type": "skip",
+        "blind": blind_on_deck,
+        "next": gs.get("blind_on_deck"),
+    })
     return gs
 
 
@@ -618,6 +634,23 @@ def _handle_play_hand(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str,
     # ------------------------------------------------------------------
     # 7. Process scoring side-effects
     # ------------------------------------------------------------------
+    # Record hand history entry before destruction modifies played
+    gs.setdefault("hand_history", []).append({
+        "ante": gs.get("round_resets", {}).get("ante", 1),
+        "round": gs.get("round", 0),
+        "hand_num": cr.get("hands_played", 0),
+        "hand_type": result.hand_type,
+        "cards": list(played),
+        "scoring_cards": list(result.scoring_cards),
+        "destroyed_cards": list(result.cards_destroyed),
+        "jokers": list(jokers),
+        "chips": result.chips,
+        "mult": result.mult,
+        "total": result.total,
+        "dollars_earned": result.dollars_earned,
+        "debuffed": result.debuffed,
+    })
+
     # Accumulate chips
     gs["chips"] = gs.get("chips", 0) + result.total
     gs["last_score_result"] = result
@@ -729,7 +762,18 @@ def _handle_play_hand(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str,
                 idx = dth["forced_card_index"]
                 if 0 <= idx < len(hand):
                     hand[idx].ability["forced_selection"] = True
-
+                    
+    _log_action(gs, {
+        "type": "play",
+        "hand_type": result.hand_type,
+        "total": result.total,
+        "chips_total": gs.get("chips", 0),
+        "blind_chips": getattr(gs.get("blind"), "chips", None),
+        "chips": result.chips,
+        "mult": result.mult,
+        "cards": [_card_label(c) for c in played],
+        "jokers": [_card_label(j) for j in jokers],
+    })
     return gs
 
 
@@ -945,6 +989,10 @@ def _handle_discard(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str, A
             if 0 <= idx < len(hand):
                 hand[idx].ability["forced_selection"] = True
 
+    _log_action(gs, {
+        "type": "discard",
+        "cards": [_card_label(c) for c in discarded],
+    })
     return gs
 
 
@@ -1042,6 +1090,13 @@ def _handle_buy_card(gs: dict[str, Any], idx: int) -> dict[str, Any]:
     if added_playing_card:
         _fire_shop_joker_context(gs, playing_card_added=True, cards=[card])
 
+    ability = card.ability if isinstance(card.ability, dict) else {}
+    _log_action(gs, {
+        "type": "buy",
+        "card": _card_label(card),
+        "card_set": _get_card_set(card),
+        "cost": card.cost,
+    })
     return gs
 
 
@@ -1068,6 +1123,11 @@ def _handle_sell_card(gs: dict[str, Any], area: str, idx: int) -> dict[str, Any]
     # Fire selling_card joker context (Campfire +xMult per card sold)
     _fire_shop_joker_context(gs, selling_card=True)
 
+    _log_action(gs, {
+        "type": "sell",
+        "card": _card_label(card),
+        "gold": card.sell_cost,
+    })
     return gs
 
 

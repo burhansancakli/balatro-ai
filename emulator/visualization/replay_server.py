@@ -15,7 +15,8 @@ WebSocket protocol (JSON messages):
 
   Server → browser:
     {"type": "episodes", "episodes": [...]}  — episode list
-    {"type": "state", ...}                   — step state snapshot
+    {"type": "episode", ...}                 — full episode payload (sent once per load)
+    {"type": "cursor", "step_index", "total_steps"} — lightweight step cursor (sent on nav)
 """
 
 from __future__ import annotations
@@ -57,50 +58,46 @@ def _episode_summary(ep: dict, idx: int) -> dict:
     }
 
 
-def _build_step_state(ep: dict, step_index: int) -> dict:
-    """Build a frontend-compatible state snapshot for action_log step I."""
+def _build_episode_payload(ep: dict, idx: int) -> dict:
+    """Build the heavy, one-time payload sent when an episode is loaded.
+
+    Sent once per episode load; subsequent step navigation only needs the
+    lightweight cursor message (see ``_build_cursor``), since the client
+    caches this payload and can recompute everything else locally.
+    """
     action_log = ep.get("action_log", [])
     hand_history = ep.get("hand_history", [])
     total_steps = len(action_log)
 
-    # Accumulate hand history up to current step
-    # Map each hand_history entry to the action_log step where it was played
-    play_step_map: dict[int, dict] = {}
-    play_count = 0
-    for i, entry in enumerate(action_log):
-        if entry.get("type") == "play":
-            if play_count < len(hand_history):
-                play_step_map[i] = hand_history[play_count]
-            play_count += 1
-
-    visible_hands = [h for i, h in play_step_map.items() if i <= step_index]
-
-    current = action_log[step_index] if step_index < total_steps else {}
-
-    # Build joker list from the most recent hand before this step
-    jokers: list[str] = []
-    for i in range(step_index, -1, -1):
-        if i in play_step_map:
-            jokers = play_step_map[i].get("jokers", [])
-            break
+    # Tag each hand_history entry with the action_log step index that
+    # produced it, so the client can filter "visible so far" without
+    # the server re-sending data on every navigation.
+    play_indices = [i for i, e in enumerate(action_log) if e.get("type") == "play"]
+    enriched_history = []
+    for i, h in enumerate(hand_history):
+        step = play_indices[i] if i < len(play_indices) else max(total_steps - 1, 0)
+        enriched_history.append({**h, "_step": step})
 
     return {
-        "type": "state",
-        "replay": True,
-        "episode_index": ep.get("episode", 0),
+        "type": "episode",
+        "episode_index": ep.get("episode", idx),
         "seed": ep.get("seed", ""),
-        "step_index": step_index,
         "total_steps": total_steps,
         "won": ep.get("won", False),
         "ante_reached": ep.get("ante_reached", 0),
         "rounds_beaten": ep.get("rounds_beaten", 0),
-        # Current action context
-        "current_action": current,
-        "current_jokers": jokers,
-        # Full accumulated hand history
-        "hand_history": visible_hands,
-        # Full action log for timeline
         "action_log": action_log,
+        "hand_history": enriched_history,
+        "step_index": 0,
+    }
+
+
+def _build_cursor(step_index: int, total_steps: int) -> dict:
+    """Build the lightweight message sent on every step/next/prev."""
+    return {
+        "type": "cursor",
+        "step_index": step_index,
+        "total_steps": total_steps,
     }
 
 
@@ -123,11 +120,11 @@ class ReplayServer:
 
     def start(self) -> None:
         self._episodes = _load_jsonl(self._path)
-        print(f"\n  [emulator] Loaded {len(self._episodes)} episode(s) from {self._path}")
-        threading.Thread(target=self._run_http, daemon=True, name="emulator-replay-http").start()
-        threading.Thread(target=self._run_ws,   daemon=True, name="emulator-replay-ws").start()
+        print(f"\n  [jackdaw] Loaded {len(self._episodes)} episode(s) from {self._path}")
+        threading.Thread(target=self._run_http, daemon=True, name="jackdaw-replay-http").start()
+        threading.Thread(target=self._run_ws,   daemon=True, name="jackdaw-replay-ws").start()
         self._started.wait(timeout=8)
-        print(f"  [emulator] Replay dashboard → http://{self._host}:{self._port}/?mode=replay\n")
+        print(f"  [jackdaw] Replay dashboard → http://{self._host}:{self._port}/?mode=replay\n")
 
     # ------------------------------------------------------------------
     # HTTP
@@ -181,14 +178,14 @@ class ReplayServer:
         try:
             asyncio.run(self._serve_ws())
         except Exception as exc:
-            print(f"\n[emulator-replay-ws] CRASH: {exc}\n")
+            print(f"\n[jackdaw-replay-ws] CRASH: {exc}\n")
             self._started.set()
 
     async def _serve_ws(self) -> None:
         try:
             import websockets
         except ImportError:
-            print("\n[emulator] websockets package missing — run: pip install 'emulator[viz]'\n")
+            print("\n[jackdaw] websockets package missing — run: pip install 'jackdaw[viz]'\n")
             self._started.set()
             return
 
@@ -203,16 +200,21 @@ class ReplayServer:
                 summary = [_episode_summary(ep, i) for i, ep in enumerate(episodes)]
                 await ws.send(json.dumps({"type": "episodes", "episodes": summary}))
 
-            async def send_step(ep_idx: int, step: int) -> None:
+            async def send_episode(ep_idx: int) -> None:
                 ep = episodes[ep_idx]
-                snap = _build_step_state(ep, step)
-                await ws.send(json.dumps(snap, default=str))
+                payload = _build_episode_payload(ep, ep_idx)
+                await ws.send(json.dumps(payload, default=str))
+
+            async def send_cursor(step: int) -> None:
+                total = len(episodes[current_ep].get("action_log", []))
+                await ws.send(json.dumps(_build_cursor(step, total), default=str))
 
             # Send episode list on connect
             try:
                 await send_episodes()
                 if episodes:
-                    await send_step(0, 0)
+                    await send_episode(0)
+                    await send_cursor(0)
             except Exception:
                 return
 
@@ -229,24 +231,25 @@ class ReplayServer:
                         if 0 <= ep_idx < len(episodes):
                             current_ep = ep_idx
                             current_step = 0
-                            await send_step(current_ep, current_step)
+                            await send_episode(current_ep)
+                            await send_cursor(current_step)
 
                     elif cmd == "step":
                         step = int(msg.get("index", 0))
                         total = len(episodes[current_ep].get("action_log", []))
                         current_step = max(0, min(step, total - 1))
-                        await send_step(current_ep, current_step)
+                        await send_cursor(current_step)
 
                     elif cmd == "next":
                         total = len(episodes[current_ep].get("action_log", []))
                         if current_step < total - 1:
                             current_step += 1
-                        await send_step(current_ep, current_step)
+                        await send_cursor(current_step)
 
                     elif cmd == "prev":
                         if current_step > 0:
                             current_step -= 1
-                        await send_step(current_ep, current_step)
+                        await send_cursor(current_step)
 
                 except Exception:
                     pass
