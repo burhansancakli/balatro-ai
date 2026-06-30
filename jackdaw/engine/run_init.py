@@ -86,7 +86,7 @@ def init_game_object() -> dict[str, Any]:
         "modifiers": {},
         "starting_params": get_starting_params(),
         "banned_keys": {},
-        "round": 0,
+        "round": 1,
         "probabilities": {"normal": 1},
         "bosses_used": bosses_used,
         "pseudorandom": {},
