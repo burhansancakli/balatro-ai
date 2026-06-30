@@ -523,6 +523,16 @@ function renderReplayTimeline(s){
         const top = mk('div', 'tl-top-line');
         top.innerHTML = `<span class="tl-hand">${esc(a.hand_type||'?')}</span><span class="tl-pts">${fmt(a.total)} pts</span>`;
         detail.appendChild(top);
+        // Cumulative chips progress toward blind
+        if(a.chips_total != null){
+          const bar = mk('div', 'tl-score-bar');
+          const pct = a.blind_chips ? Math.min(100, (a.chips_total / a.blind_chips) * 100) : 0;
+          const won = a.chips_total >= (a.blind_chips || Infinity);
+          bar.innerHTML = `<span class="tl-score-val ${won?'won':''}">${fmt(a.chips_total)}</span>`
+            + (a.blind_chips ? `<span class="tl-score-sep">/</span><span class="tl-score-blind">${fmt(a.blind_chips)}</span>` : '')
+            + (a.blind_chips ? `<span class="tl-score-track"><span class="tl-score-fill ${won?'won':''}" style="width:${pct.toFixed(1)}%"></span></span>` : '');
+          detail.appendChild(bar);
+        }
         if(a.cards?.length){
           const cr = mk('div', 'tl-cards');
           a.cards.forEach(c => cr.appendChild(tlChip(c)));
@@ -533,6 +543,10 @@ function renderReplayTimeline(s){
           a.jokers.forEach(j => { const jc = mk('span','tl-jchip'); jc.textContent = j; jr.appendChild(jc); });
           detail.appendChild(jr);
         }
+      } else if(a.type === 'skip'){
+        const top = mk('div', 'tl-top-line');
+        top.innerHTML = `<span class="tl-skip-lbl">${esc(a.blind||'?')} Blind</span><span class="tl-skip-arrow">→</span><span class="tl-skip-next">${esc(a.next||'?')} Blind</span>`;
+        detail.appendChild(top);
       } else if(a.type === 'discard'){
         const top = mk('div', 'tl-top-line');
         top.appendChild(mk('span', 'tl-discard-lbl', `${(a.cards||[]).length} card${(a.cards||[]).length!==1?'s':''}`));

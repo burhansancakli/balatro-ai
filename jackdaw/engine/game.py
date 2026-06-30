@@ -504,6 +504,12 @@ def _handle_skip_blind(gs: dict[str, Any]) -> dict[str, Any]:
     # Only return to BLIND_SELECT if a tag didn't open a pack
     if gs.get("phase") != GamePhase.PACK_OPENING:
         gs["phase"] = GamePhase.BLIND_SELECT
+
+    _log_action(gs, {
+        "type": "skip",
+        "blind": blind_on_deck,
+        "next": gs.get("blind_on_deck"),
+    })
     return gs
 
 
@@ -761,6 +767,8 @@ def _handle_play_hand(gs: dict[str, Any], indices: tuple[int, ...]) -> dict[str,
         "type": "play",
         "hand_type": result.hand_type,
         "total": result.total,
+        "chips_total": gs.get("chips", 0),
+        "blind_chips": getattr(gs.get("blind"), "chips", None),
         "chips": result.chips,
         "mult": result.mult,
         "cards": [_card_label(c) for c in played],
