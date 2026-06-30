@@ -25,10 +25,12 @@ function connect(){
     if(isReplay){
       const msg = JSON.parse(e.data);
       if(msg.type === 'episodes'){
-        replayEpisodes = msg.episodes || [];
-        renderReplayPicker(replayEpisodes);
-      } else if(msg.type === 'state'){
-        renderReplayState(msg);
+        replayEpisodesRaw = msg.episodes || [];
+        recomputeReplayView();
+      } else if(msg.type === 'episode'){
+        onReplayEpisodeLoaded(msg);
+      } else if(msg.type === 'cursor'){
+        onReplayCursor(msg);
       }
     } else {
       state = JSON.parse(e.data); selectedCards.clear(); render(state);
@@ -96,7 +98,7 @@ function render(s){
   renderScore(s);
   renderSidebar(s);
   renderMain(s);
-  renderHandHistory(s);
+  renderHandHistory(s.hand_history);
   renderActions(s);
   renderLog(s);
 }
@@ -320,18 +322,22 @@ function btnCls(t){
 }
 
 /* ── Hand History ────────────────────────────────────────── */
-function renderHandHistory(s){
+const HH_MAX_RENDER = 60; // cap rendered rows for long replay episodes
+
+function renderHandHistory(entries){
+  entries = entries || [];
   const sec = $('hist'); sec.innerHTML = '';
-  const entries = s.hand_history || [];
   if(!entries.length) return;
 
   const hdr = mk('div', 'hh-header');
-  hdr.innerHTML = `Hand History <span style="color:#4a6a4a;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;">(${entries.length} played)</span>`;
+  const capped = entries.length > HH_MAX_RENDER;
+  hdr.innerHTML = `Hand History <span style="color:#4a6a4a;font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;">(${entries.length} played${capped ? `, showing last ${HH_MAX_RENDER}` : ''})</span>`;
   sec.appendChild(hdr);
 
   const scroll = mk('div', 'hh-scroll');
-  // Show newest first
-  [...entries].reverse().forEach(e => {
+  // Show newest first, capped for performance on long episodes
+  const shown = capped ? entries.slice(entries.length - HH_MAX_RENDER) : entries;
+  [...shown].reverse().forEach(e => {
     const card = mk('div', 'hh-entry' + (e.debuffed ? ' debuffed' : ''));
 
     // Meta: A1·R1·H2
@@ -404,9 +410,17 @@ function renderLog(s){
 
 /* ── Replay mode ─────────────────────────────────────────── */
 let isReplay = false;
-let replayEpisodes = [];
-let replayActiveEp = -1;
+let replayEpisodesRaw = [];   // raw summaries from server, server order
+let replayView = [];          // filtered + sorted summaries currently shown
+let replayActiveEp = -1;      // "episode" number (not array index) of loaded episode
 let replayTotalSteps = 0;
+let replaySort = 'index';
+let replayFilter = 'all';
+
+// Cached data for the currently-loaded episode (sent once via 'episode' msg)
+let replayCur = null;   // { action_log, hand_history, total_steps, episode_index, seed, won, ante_reached, rounds_beaten }
+let replayRowEls = [];  // tl-row elements indexed by action_log step
+let replayStepIdx = 0;
 
 // Convert card label like "As", "10H", "Kd" → "A♠", "10♥", "K♦"
 function prettyCard(label){
@@ -428,56 +442,164 @@ function tlChip(label){
   return d;
 }
 
-function renderReplaySidebar(episodes){
-  const side = $('side');
-  side.innerHTML = '';
+const EP_ROW_H = 54; // approx px height of one .ep-row incl. gap — used for virtualization
 
-  const panel = mk('div', 'panel ep-panel');
-  const ph = mk('div', 'ph');
-  ph.innerHTML = `<span>📺 Episodes</span><span class="ph-right" style="color:#9dd89d">${episodes.length}</span>`;
-  panel.appendChild(ph);
-
-  const epList = mk('div', 'ep-list');
-
-  if(!episodes.length){
-    const msg = mk('div', 'pb');
-    msg.appendChild(mk('span', 'empty', 'Loading…'));
-    panel.appendChild(msg);
-  } else {
-    episodes.forEach((ep, i) => {
-      const rew = ep.total_reward || 0;
-      const row = mk('div', 'ep-row' + (ep.won ? ' won' : '') + (i === replayActiveEp ? ' active' : ''));
-      row.title = `Seed: ${ep.seed||'?'} · ${ep.hands_played||0} hands played`;
-      row.innerHTML = `
-        <div class="ep-top">
-          <span class="ep-num">#${ep.episode}</span>
-          <span class="ep-badge">A${ep.ante_reached}·R${ep.rounds_beaten}</span>
-          <span class="ep-status ${ep.won ? 'win' : ''}">${ep.won ? 'WIN' : '—'}</span>
-        </div>
-        <div class="ep-bot">
-          <span class="ep-rew ${rew >= 0 ? 'pos' : 'neg'}">${rew >= 0 ? '+' : ''}${rew.toFixed(1)}</span>
-          <span class="ep-steps">${ep.steps||0}s · ${ep.hands_played||0}h</span>
-        </div>
-      `;
-      row.onclick = () => send({cmd:'load', episode: i});
-      epList.appendChild(row);
-    });
-    panel.appendChild(epList);
+function sortEpisodes(eps, mode){
+  const arr = eps.slice();
+  switch(mode){
+    case 'reward_desc': arr.sort((a,b)=>(b.total_reward||0)-(a.total_reward||0)); break;
+    case 'reward_asc':  arr.sort((a,b)=>(a.total_reward||0)-(b.total_reward||0)); break;
+    case 'ante_desc':   arr.sort((a,b)=>(b.ante_reached||0)-(a.ante_reached||0)); break;
+    case 'rounds_desc': arr.sort((a,b)=>(b.rounds_beaten||0)-(a.rounds_beaten||0)); break;
+    case 'steps_desc':  arr.sort((a,b)=>(b.steps||0)-(a.steps||0)); break;
+    case 'steps_asc':   arr.sort((a,b)=>(a.steps||0)-(b.steps||0)); break;
+    case 'index_desc':  arr.sort((a,b)=>b.index-a.index); break;
+    default:             arr.sort((a,b)=>a.index-b.index); // 'index'
   }
-
-  side.appendChild(panel);
-
-  // Scroll active episode into view
-  requestAnimationFrame(() => {
-    const active = epList.querySelector('.ep-row.active');
-    if(active) active.scrollIntoView({block:'nearest', behavior:'smooth'});
-  });
+  return arr;
 }
 
-function renderReplayTimeline(s){
+function filterEpisodes(eps, mode){
+  if(mode === 'won')  return eps.filter(e => e.won);
+  if(mode === 'lost') return eps.filter(e => !e.won);
+  return eps;
+}
+
+function recomputeReplayView(){
+  replayView = sortEpisodes(filterEpisodes(replayEpisodesRaw, replayFilter), replaySort);
+  renderReplaySidebar();
+}
+
+function buildEpRow(ep){
+  const rew = ep.total_reward || 0;
+  const row = mk('div', 'ep-row' + (ep.won ? ' won' : '') + (ep.episode === replayActiveEp ? ' active' : ''));
+  row.title = `Seed: ${ep.seed||'?'} · ${ep.hands_played||0} hands played`;
+  row.innerHTML = `
+    <div class="ep-top">
+      <span class="ep-num">#${ep.episode}</span>
+      <span class="ep-badge">A${ep.ante_reached}·R${ep.rounds_beaten}</span>
+      <span class="ep-status ${ep.won ? 'win' : ''}">${ep.won ? 'WIN' : '—'}</span>
+    </div>
+    <div class="ep-bot">
+      <span class="ep-rew ${rew >= 0 ? 'pos' : 'neg'}">${rew >= 0 ? '+' : ''}${rew.toFixed(1)}</span>
+      <span class="ep-steps">${fmt(ep.steps)}s · ${fmt(ep.hands_played)}h</span>
+    </div>
+  `;
+  row.onclick = () => send({cmd:'load', episode: ep.index});
+  return row;
+}
+
+// One-time-built sidebar shell; rows are virtualized on scroll so DOM size
+// stays small regardless of how many episodes were recorded.
+function renderReplaySidebar(){
+  let side = $('side');
+  if(!side.querySelector('.ep-panel')){
+    side.innerHTML = '';
+    const panel = mk('div', 'panel ep-panel');
+    panel.appendChild(mk('div', 'ph', '<span>📺 Episodes</span><span class="ph-right" id="ep-count" style="color:#9dd89d"></span>'));
+
+    const controls = mk('div', 'ep-controls');
+    controls.innerHTML = `
+      <select id="ep-sort" class="ep-sort-sel">
+        <option value="index">Episode #</option>
+        <option value="index_desc">Episode # ↓</option>
+        <option value="reward_desc">Reward ↓</option>
+        <option value="reward_asc">Reward ↑</option>
+        <option value="ante_desc">Ante reached ↓</option>
+        <option value="rounds_desc">Rounds beaten ↓</option>
+        <option value="steps_desc">Steps ↓</option>
+        <option value="steps_asc">Steps ↑</option>
+      </select>
+      <div class="ep-filter-row">
+        <button class="ep-filter-btn active" data-f="all">All</button>
+        <button class="ep-filter-btn" data-f="won">Won</button>
+        <button class="ep-filter-btn" data-f="lost">Lost</button>
+      </div>
+    `;
+    panel.appendChild(controls);
+
+    const epListScroll = mk('div', 'ep-list');
+    epListScroll.id = 'ep-list-scroll';
+    panel.appendChild(epListScroll);
+    side.appendChild(panel);
+
+    controls.querySelector('#ep-sort').value = replaySort;
+    controls.querySelector('#ep-sort').onchange = (e) => { replaySort = e.target.value; recomputeReplayView(); };
+    controls.querySelectorAll('.ep-filter-btn').forEach(btn => {
+      btn.onclick = () => {
+        replayFilter = btn.dataset.f;
+        controls.querySelectorAll('.ep-filter-btn').forEach(b => b.classList.toggle('active', b===btn));
+        recomputeReplayView();
+      };
+    });
+  }
+
+  $('ep-count').textContent = `${replayView.length}${replayView.length !== replayEpisodesRaw.length ? ` / ${replayEpisodesRaw.length}` : ''}`;
+  renderEpisodeListVirtual();
+}
+
+// Virtual-scroll the episode list: only DOM nodes for rows in (or near) the
+// viewport are created, so the list stays fast with thousands of episodes.
+let _epVirtualHandlersBound = false;
+function renderEpisodeListVirtual(){
+  const epList = $('ep-list-scroll');
+  if(!epList) return;
+
+  let spacerTop = epList.querySelector('.ep-spacer-top');
+  let rowsContainer = epList.querySelector('.ep-rows');
+  let spacerBot = epList.querySelector('.ep-spacer-bot');
+  if(!rowsContainer){
+    epList.innerHTML = '';
+    spacerTop = mk('div', 'ep-spacer-top');
+    rowsContainer = mk('div', 'ep-rows');
+    spacerBot = mk('div', 'ep-spacer-bot');
+    epList.appendChild(spacerTop);
+    epList.appendChild(rowsContainer);
+    epList.appendChild(spacerBot);
+  }
+
+  if(!replayView.length){
+    spacerTop.style.height = '0px'; spacerBot.style.height = '0px';
+    rowsContainer.innerHTML = '';
+    rowsContainer.appendChild(mk('span', 'empty', 'No episodes match filter'));
+    return;
+  }
+
+  function update(){
+    const total = replayView.length;
+    const scrollTop = epList.scrollTop;
+    const viewH = epList.clientHeight || 400;
+    const buffer = 6;
+    const start = Math.max(0, Math.floor(scrollTop / EP_ROW_H) - buffer);
+    const end = Math.min(total, Math.ceil((scrollTop + viewH) / EP_ROW_H) + buffer);
+    spacerTop.style.height = (start * EP_ROW_H) + 'px';
+    spacerBot.style.height = Math.max(0, (total - end) * EP_ROW_H) + 'px';
+    rowsContainer.innerHTML = '';
+    for(let i = start; i < end; i++) rowsContainer.appendChild(buildEpRow(replayView[i]));
+  }
+
+  if(!_epVirtualHandlersBound){
+    epList.addEventListener('scroll', () => renderEpisodeListVirtual());
+    _epVirtualHandlersBound = true;
+  }
+  update();
+
+  // Scroll the active episode into view the first time it loads
+  if(replayActiveEp >= 0 && !epList.dataset.scrolledTo){
+    const idx = replayView.findIndex(e => e.episode === replayActiveEp);
+    if(idx >= 0){
+      epList.scrollTop = Math.max(0, idx * EP_ROW_H - viewHalf(epList));
+      epList.dataset.scrolledTo = '1';
+      update();
+    }
+  }
+}
+function viewHalf(el){ return (el.clientHeight || 400) / 2; }
+
+function renderReplayTimeline(ep, stepIdx){
   const m = $('main'); m.innerHTML = '';
-  const log = s.action_log || [];
-  const stepIdx = s.step_index ?? 0;
+  const log = ep.action_log || [];
+  replayRowEls = new Array(log.length);
 
   if(!log.length){
     const p = mk('div', 'panel');
@@ -513,6 +635,7 @@ function renderReplayTimeline(s){
     g.items.forEach(a => {
       const isActive = a._idx === stepIdx;
       const row = mk('div', 'tl-row' + (isActive ? ' active' : ''));
+      replayRowEls[a._idx] = row;
       if(isActive) scrollTarget = row;
 
       row.appendChild(mk('span', `tl-type tl-${a.type}`, a.type.toUpperCase()));
@@ -592,12 +715,10 @@ function renderReplayTimeline(s){
   }
 }
 
-function renderReplayNav(s){
+function renderReplayNav(total, idx){
   const row = $('acts-row'); row.innerHTML = '';
   $('acts-label').textContent = 'Navigation';
   $('watch-note').classList.remove('show');
-  const total = s.total_steps || 0;
-  const idx   = s.step_index ?? 0;
   replayTotalSteps = total;
 
   const nav = mk('div', 'replay-nav');
@@ -617,7 +738,7 @@ function renderReplayNav(s){
   next.disabled = idx >= total - 1;
   next.onclick = () => send({cmd:'next'});
 
-  const lbl = mk('div', 'rn-step', `${idx + 1} / ${total}`);
+  const lbl = mk('div', 'rn-step', `${fmt(idx + 1)} / ${fmt(total)}`);
 
   nav.appendChild(prev);
   nav.appendChild(slider);
@@ -626,34 +747,69 @@ function renderReplayNav(s){
   row.appendChild(nav);
 }
 
-function renderReplayState(s){
-  if(s.episode_index !== replayActiveEp){
-    replayActiveEp = s.episode_index;
-    renderReplaySidebar(replayEpisodes);
-  }
+// Full episode payload arrives once per 'load' — cache it, rebuild the
+// timeline once, and refresh the sidebar's active-row highlighting.
+function onReplayEpisodeLoaded(ep){
+  replayCur = ep;
+  replayActiveEp = ep.episode_index ?? 0;
+  replayStepIdx = ep.step_index ?? 0;
 
-  $('h-phase').textContent = 'Replay';
-  $('h-ante').textContent  = `A${s.ante_reached||0} · ${s.rounds_beaten||0} rounds${s.won?' ✓':''}`;
-  $('h-money').textContent = `Ep ${s.episode_index??0}`;
-  $('h-hands').textContent = `${(s.hand_history||[]).length} hands`;
-  $('h-disc').textContent  = `${s.total_steps||0} steps`;
-  $('h-won').style.display = s.won ? '' : 'none';
+  const epList = $('ep-list-scroll');
+  if(epList) delete epList.dataset.scrolledTo;
+  renderReplaySidebar();
 
-  const pct = s.total_steps ? (s.step_index??0) / s.total_steps : 0;
-  $('bar').style.width   = (pct*100).toFixed(1) + '%';
-  $('s-cur').textContent = `Step ${(s.step_index??0)+1}`;
-  $('s-max').textContent = `${s.total_steps||0}`;
-  $('s-pct').textContent = s.won ? '🏆 Won' : `${(s.hand_history||[]).length} hands`;
-  $('heval').classList.remove('visible');
-
-  renderReplayTimeline(s);
-  renderHandHistory(s);
-  renderReplayNav(s);
+  renderHeaderForStep();
+  renderReplayTimeline(ep, replayStepIdx);
+  updateHandHistoryForStep();
+  renderReplayNav(ep.total_steps || 0, replayStepIdx);
 }
 
-function renderReplayPicker(episodes){
-  replayEpisodes = episodes;
-  renderReplaySidebar(episodes);
+// Lightweight cursor arrives on every step/next/prev — no full rebuild,
+// just move the active-row highlight and patch the few text fields that
+// depend on step position.
+function onReplayCursor(c){
+  if(!replayCur) return;
+  replayStepIdx = c.step_index ?? 0;
+
+  const prevActive = document.querySelector('#main .tl-row.active');
+  if(prevActive) prevActive.classList.remove('active');
+  const newActive = replayRowEls[replayStepIdx];
+  if(newActive){
+    newActive.classList.add('active');
+    newActive.scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+
+  renderHeaderForStep();
+  updateHandHistoryForStep();
+  renderReplayNav(c.total_steps || replayCur.total_steps || 0, replayStepIdx);
+}
+
+function renderHeaderForStep(){
+  const ep = replayCur; if(!ep) return;
+  $('h-phase').textContent = 'Replay';
+  $('h-ante').textContent  = `A${ep.ante_reached||0} · ${ep.rounds_beaten||0} rounds${ep.won?' ✓':''}`;
+  $('h-money').textContent = `Ep ${ep.episode_index??0}`;
+  $('h-hands').textContent = `${visibleHandHistory().length} hands`;
+  $('h-disc').textContent  = `${ep.total_steps||0} steps`;
+  $('h-won').style.display = ep.won ? '' : 'none';
+
+  const pct = ep.total_steps ? replayStepIdx / ep.total_steps : 0;
+  $('bar').style.width   = (pct*100).toFixed(1) + '%';
+  $('s-cur').textContent = `Step ${replayStepIdx+1}`;
+  $('s-max').textContent = `${ep.total_steps||0}`;
+  $('s-pct').textContent = ep.won ? '🏆 Won' : `${visibleHandHistory().length} hands`;
+  $('heval').classList.remove('visible');
+}
+
+// Hand history visible "so far" is derived client-side from the cached
+// full hand_history (tagged with _step at load time) — no re-fetch needed.
+function visibleHandHistory(){
+  if(!replayCur) return [];
+  return (replayCur.hand_history || []).filter(h => h._step <= replayStepIdx);
+}
+
+function updateHandHistoryForStep(){
+  renderHandHistory(visibleHandHistory());
 }
 
 /* ── Init ────────────────────────────────────────────────── */
@@ -666,6 +822,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     $('h-mode').textContent = '⏪ Replay';
     document.title = 'Jackdaw — Replay';
     $('watch-note').style.display = 'none';
+    $('app').classList.add('replay-mode');
     // Keyboard navigation
     document.addEventListener('keydown', e => {
       if(!isReplay) return;

@@ -45,6 +45,9 @@ body {
   display: grid;
   grid-template-rows: 50px 54px 1fr auto auto 90px;
   grid-template-columns: 190px 1fr;
+}
+#app.replay-mode {
+  grid-template-columns: 250px 1fr;
   grid-template-areas:
     "hdr  hdr"
     "scr  scr"
@@ -459,11 +462,29 @@ body {
 #replay-picker { display: none !important; }
 
 .ep-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ep-controls {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 6px 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ep-sort-sel {
+  width: 100%; font-size: 10px; padding: 4px 6px; border-radius: 5px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+  color: #c0d8c0; font-family: inherit;
+}
+.ep-filter-row { display: flex; gap: 4px; }
+.ep-filter-btn {
+  flex: 1; font-size: 9.5px; font-weight: 700; padding: 4px 0; border-radius: 5px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  color: #6a8a6a; cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.ep-filter-btn:hover { background: rgba(100,180,100,0.1); }
+.ep-filter-btn.active { background: rgba(79,168,90,0.22); border-color: #4fa85a; color: #c0d8c0; }
 .ep-list {
   flex: 1; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 6px 8px 8px;
+  padding: 6px 8px 8px; position: relative;
 }
+.ep-spacer-top, .ep-spacer-bot { flex-shrink: 0; }
+.ep-rows { display: flex; flex-direction: column; gap: 3px; }
 .ep-row {
   border-radius: 7px; padding: 7px 9px; cursor: pointer; flex-shrink: 0;
   background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
