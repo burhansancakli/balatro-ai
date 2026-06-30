@@ -19,6 +19,7 @@ import time
 import argparse
 from typing import Any
 import numpy as np
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import EvalCallback
@@ -73,9 +74,17 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None):
     eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
     eval_env = VecMonitor(eval_env)
 
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    print(f"Using device: {device}")
+
     if resume_path:
         print(f"\nResuming training from {resume_path}")
-        model = PPO.load(resume_path, env=vec_env, tensorboard_log=LOG_DIR)
+        model = PPO.load(resume_path, env=vec_env, tensorboard_log=LOG_DIR, device=device)
         # Extract step count from filename (e.g. balatro_ppo_44000_steps.zip)
         import re
         match = re.search(r"(\d+)_steps", Path(resume_path).stem)
@@ -98,6 +107,7 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None):
             verbose         = 1,
             tensorboard_log = LOG_DIR,
             policy_kwargs   = dict(net_arch=[64, 64]),
+            device          = device,
         )
 
     callbacks = [

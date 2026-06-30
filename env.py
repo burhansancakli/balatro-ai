@@ -204,7 +204,7 @@ class BalatroEnv(gym.Env):
         """Call backend.handle() directly, with load→start translation for SimBackend."""
         if isinstance(self.backend, SimBackend) and method == "load":
             seed = Path(params.get("path", "")).stem.replace("fresh_", "")
-            return self.backend.handle("start", {"deck": DECK, "stake": STAKE, "seed": seed or "DEFAULT"})
+            return self.backend.handle("start", {"deck": DECK, "stake": STAKE, "seed": seed})
         return self.backend.handle(method, params)
 
     def _poll_until(self, target_states: list, timeout: float = POLL_TIMEOUT) -> dict:
