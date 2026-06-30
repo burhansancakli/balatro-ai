@@ -121,9 +121,10 @@ class SimBackend:
         disabled, SkipBlind removed from legal actions).
     """
 
-    def __init__(self, *, simplified: bool = False) -> None:
+    def __init__(self, *, simplified: bool = False, fast: bool = False) -> None:
         self._gs: dict[str, Any] | None = None
         self._simplified = simplified
+        self._fast = fast
 
     def handle(self, method: str, params: dict[str, Any] | None) -> dict[str, Any]:
         if params is None:
@@ -351,9 +352,120 @@ class SimBackend:
         return self._serialize()
 
     def _serialize(self) -> dict[str, Any]:
+        if self._fast:
+            return self._fast_serialize()
         from emulator.bridge.serializer import game_state_to_bot_response
 
         return game_state_to_bot_response(self._gs)  # type: ignore[arg-type]
+
+    def _fast_serialize(self) -> dict[str, Any]:
+        """Minimal state dict for training — skips full card serialization.
+
+        Only includes the fields that ``env.py`` and ``observations.py``
+        actually read: phase, ante/round/money, round info, blind
+        status+score, hand cards (rank/suit), joker labels, and shop
+        card labels+keys+cost.  Skips deck, consumables, hand levels,
+        blind tags, modifiers, editions, seals, etc.
+        """
+        from emulator.engine.actions import GamePhase
+        from emulator.engine.data.prototypes import BLINDS
+        from emulator.engine.blind import Blind
+
+        gs = self._gs
+        if gs is None:
+            return {}
+
+        _PHASE_TO_STATE = {
+            GamePhase.BLIND_SELECT: "BLIND_SELECT",
+            GamePhase.SELECTING_HAND: "SELECTING_HAND",
+            GamePhase.ROUND_EVAL: "ROUND_EVAL",
+            GamePhase.SHOP: "SHOP",
+            GamePhase.PACK_OPENING: "SMODS_BOOSTER_OPENED",
+            GamePhase.GAME_OVER: "GAME_OVER",
+        }
+        _BLIND_STATUS = {"Select": "SELECT", "Current": "CURRENT",
+                         "Skipped": "SKIPPED", "Defeated": "DEFEATED"}
+
+        rr = gs.get("round_resets", {})
+        cr = gs.get("current_round", {})
+
+        def _light_card(card):
+            is_playing = card.base is not None
+            if is_playing:
+                return {
+                    "value": {"rank": card.base.rank.value, "suit": card.base.suit.value,
+                              "effect": ""},
+                    "state": {"debuff": card.debuff, "hidden": card.facing == "back",
+                              "highlight": False},
+                    "key": card.card_key or "",
+                    "label": f"{card.base.rank.value} of {card.base.suit.value}",
+                    "set": "",
+                    "cost": {"sell": card.sell_cost, "buy": card.cost},
+                }
+            return {
+                "value": {"rank": "", "suit": "", "effect": ""},
+                "state": {"debuff": card.debuff, "hidden": card.facing == "back",
+                          "highlight": False},
+                "key": card.center_key,
+                "label": card.ability.get("name", ""),
+                "set": card.ability.get("set", ""),
+                "cost": {"sell": card.sell_cost, "buy": card.cost},
+            }
+
+        def _light_area(cards, limit):
+            return {"count": len(cards), "limit": limit,
+                    "highlighted_limit": 0,
+                    "cards": [_light_card(c) for c in cards]}
+
+        def _score_blind(blind_type: str) -> int:
+            status_raw = rr.get("blind_states", {}).get(blind_type, "")
+            blind_key = rr.get("blind_choices", {}).get(blind_type, "")
+            active = gs.get("blind")
+            if active and status_raw == "Current":
+                return active.chips
+            proto = BLINDS.get(blind_key)
+            if proto:
+                return Blind.create(
+                    blind_key,
+                    rr.get("ante", 1),
+                    gs.get("modifiers", {}).get("scaling", 1),
+                    gs.get("starting_params", {}).get("ante_scaling", 1.0),
+                ).chips
+            return 0
+
+        blind_states = rr.get("blind_states", {})
+        blinds = {}
+        for bt in ("Small", "Big", "Boss"):
+            status_raw = blind_states.get(bt, "")
+            blinds[bt.lower()] = {
+                "type": bt.upper(),
+                "status": _BLIND_STATUS.get(status_raw, "UPCOMING"),
+                "score": _score_blind(bt),
+            }
+
+        hand = gs.get("hand", [])
+        jokers = gs.get("jokers", [])
+        shop_cards = gs.get("shop_cards", [])
+
+        return {
+            "state": _PHASE_TO_STATE.get(gs.get("phase", ""), str(gs.get("phase", ""))),
+            "round_num": gs.get("round", 0),
+            "ante_num": rr.get("ante", 1),
+            "money": gs.get("dollars", 0),
+            "won": gs.get("won", False),
+            "round": {
+                "hands_left": cr.get("hands_left", 0),
+                "discards_left": cr.get("discards_left", 0),
+                "chips": gs.get("chips", 0),
+                "hands_played": cr.get("hands_played", 0),
+                "discards_used": cr.get("discards_used", 0),
+                "reroll_cost": cr.get("reroll_cost", 5),
+            },
+            "blinds": blinds,
+            "hand": _light_area(hand, gs.get("hand_size", 8)),
+            "jokers": _light_area(jokers, gs.get("joker_slots", 5)),
+            "shop": _light_area(shop_cards, len(shop_cards)),
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -88,7 +88,7 @@ class BalatrobotManager:
     def start(self) -> list:
         """Start instances and return backends. Exits on failure."""
         if self.emulator:
-            return [SimBackend(simplified=self.simplified) for _ in self.ports]
+            return [SimBackend(simplified=self.simplified, fast=True) for _ in self.ports]
 
         print(f"Starting {len(self.ports)} Balatrobot instances...\n")
         for port in self.ports:
