@@ -408,142 +408,238 @@ let replayEpisodes = [];
 let replayActiveEp = -1;
 let replayTotalSteps = 0;
 
-function renderReplayPicker(episodes){
-  const el = $('replay-picker'); el.innerHTML = '';
-  if(!episodes?.length) return;
-  const hdr = mk('div','rp-header',`Episode Replay — ${episodes.length} episode${episodes.length!==1?'s':''}`);
-  el.appendChild(hdr);
-  const list = mk('div','rp-list');
-  episodes.forEach((ep, i) => {
-    const btn = mk('button','rp-ep' + (ep.won?' won':'') + (i===replayActiveEp?' active':''));
-    btn.title = `Seed: ${ep.seed||'?'} · Steps: ${ep.steps||0} · Hands: ${ep.hands_played||0}`;
-    btn.textContent = `Ep ${ep.episode} · A${ep.ante_reached}·R${ep.rounds_beaten} ${ep.won?'✓':'✗'} (${(ep.total_reward||0).toFixed(1)})`;
-    btn.onclick = () => send({cmd:'load', episode: i});
-    list.appendChild(btn);
+// Convert card label like "As", "10H", "Kd" → "A♠", "10♥", "K♦"
+function prettyCard(label){
+  if(!label) return '?';
+  const sym = {S:'♠',H:'♥',D:'♦',C:'♣',s:'♠',h:'♥',d:'♦',c:'♣'};
+  const last = label.slice(-1);
+  return sym[last] ? label.slice(0,-1) + sym[last] : label;
+}
+
+function isRedCard(label){
+  const last = (label||'').slice(-1);
+  return last === 'H' || last === 'h' || last === 'D' || last === 'd' ||
+         label.includes('♥') || label.includes('♦');
+}
+
+function tlChip(label){
+  const d = mk('span', 'tl-chip' + (isRedCard(label) ? ' red' : ''));
+  d.textContent = prettyCard(label);
+  return d;
+}
+
+function renderReplaySidebar(episodes){
+  const side = $('side');
+  side.innerHTML = '';
+
+  const panel = mk('div', 'panel ep-panel');
+  const ph = mk('div', 'ph');
+  ph.innerHTML = `<span>📺 Episodes</span><span class="ph-right" style="color:#9dd89d">${episodes.length}</span>`;
+  panel.appendChild(ph);
+
+  const epList = mk('div', 'ep-list');
+
+  if(!episodes.length){
+    const msg = mk('div', 'pb');
+    msg.appendChild(mk('span', 'empty', 'Loading…'));
+    panel.appendChild(msg);
+  } else {
+    episodes.forEach((ep, i) => {
+      const rew = ep.total_reward || 0;
+      const row = mk('div', 'ep-row' + (ep.won ? ' won' : '') + (i === replayActiveEp ? ' active' : ''));
+      row.title = `Seed: ${ep.seed||'?'} · ${ep.hands_played||0} hands played`;
+      row.innerHTML = `
+        <div class="ep-top">
+          <span class="ep-num">#${ep.episode}</span>
+          <span class="ep-badge">A${ep.ante_reached}·R${ep.rounds_beaten}</span>
+          <span class="ep-status ${ep.won ? 'win' : ''}">${ep.won ? 'WIN' : '—'}</span>
+        </div>
+        <div class="ep-bot">
+          <span class="ep-rew ${rew >= 0 ? 'pos' : 'neg'}">${rew >= 0 ? '+' : ''}${rew.toFixed(1)}</span>
+          <span class="ep-steps">${ep.steps||0}s · ${ep.hands_played||0}h</span>
+        </div>
+      `;
+      row.onclick = () => send({cmd:'load', episode: i});
+      epList.appendChild(row);
+    });
+    panel.appendChild(epList);
+  }
+
+  side.appendChild(panel);
+
+  // Scroll active episode into view
+  requestAnimationFrame(() => {
+    const active = epList.querySelector('.ep-row.active');
+    if(active) active.scrollIntoView({block:'nearest', behavior:'smooth'});
   });
-  el.appendChild(list);
+}
+
+function renderReplayTimeline(s){
+  const m = $('main'); m.innerHTML = '';
+  const log = s.action_log || [];
+  const stepIdx = s.step_index ?? 0;
+
+  if(!log.length){
+    const p = mk('div', 'panel');
+    p.innerHTML = '<div class="ph">Timeline</div>';
+    const b = mk('div', 'pb');
+    b.appendChild(mk('span', 'empty', 'No actions recorded — re-run training with --record-dir'));
+    p.appendChild(b); m.appendChild(p);
+    return;
+  }
+
+  // Group consecutive actions by (ante, round)
+  const groups = [];
+  let curGroup = null;
+  log.forEach((a, i) => {
+    const key = `${a.ante}-${a.round}`;
+    if(!curGroup || curGroup.key !== key){
+      curGroup = {key, ante: a.ante, round: a.round, items: []};
+      groups.push(curGroup);
+    }
+    curGroup.items.push({...a, _idx: i});
+  });
+
+  let scrollTarget = null;
+  const container = mk('div', 'tl-container');
+
+  groups.forEach(g => {
+    const grp = mk('div', 'tl-group');
+
+    const head = mk('div', 'tl-group-head');
+    head.innerHTML = `<span class="tl-gh-ante">Ante ${g.ante}</span><span class="tl-gh-sep">·</span><span class="tl-gh-round">Round ${g.round}</span>`;
+    grp.appendChild(head);
+
+    g.items.forEach(a => {
+      const isActive = a._idx === stepIdx;
+      const row = mk('div', 'tl-row' + (isActive ? ' active' : ''));
+      if(isActive) scrollTarget = row;
+
+      row.appendChild(mk('span', `tl-type tl-${a.type}`, a.type.toUpperCase()));
+
+      const detail = mk('div', 'tl-detail');
+
+      if(a.type === 'play'){
+        const top = mk('div', 'tl-top-line');
+        top.innerHTML = `<span class="tl-hand">${esc(a.hand_type||'?')}</span><span class="tl-pts">${fmt(a.total)} pts</span>`;
+        detail.appendChild(top);
+        if(a.cards?.length){
+          const cr = mk('div', 'tl-cards');
+          a.cards.forEach(c => cr.appendChild(tlChip(c)));
+          detail.appendChild(cr);
+        }
+        if(a.jokers?.length){
+          const jr = mk('div', 'tl-jokers');
+          a.jokers.forEach(j => { const jc = mk('span','tl-jchip'); jc.textContent = j; jr.appendChild(jc); });
+          detail.appendChild(jr);
+        }
+      } else if(a.type === 'discard'){
+        const top = mk('div', 'tl-top-line');
+        top.appendChild(mk('span', 'tl-discard-lbl', `${(a.cards||[]).length} card${(a.cards||[]).length!==1?'s':''}`));
+        detail.appendChild(top);
+        if(a.cards?.length){
+          const cr = mk('div', 'tl-cards');
+          a.cards.forEach(c => cr.appendChild(tlChip(c)));
+          detail.appendChild(cr);
+        }
+      } else if(a.type === 'buy'){
+        const top = mk('div', 'tl-top-line');
+        top.innerHTML = `<span class="tl-item">${esc(a.card||'?')}</span><span class="tl-cost">$${a.cost||0}</span>`;
+        detail.appendChild(top);
+      } else if(a.type === 'sell'){
+        const top = mk('div', 'tl-top-line');
+        top.innerHTML = `<span class="tl-item">${esc(a.card||'?')}</span><span class="tl-gold">+$${a.gold||0}</span>`;
+        detail.appendChild(top);
+      } else if(a.type === 'blind'){
+        const top = mk('div', 'tl-top-line');
+        top.innerHTML = `<span class="tl-bname">${esc(a.name||'?')}</span><span class="tl-bchips">${fmt(a.chips)} chips</span>`;
+        detail.appendChild(top);
+      } else {
+        detail.textContent = a.type;
+      }
+
+      row.appendChild(detail);
+
+      if(a.dollars != null){
+        row.appendChild(mk('span', 'tl-dol', '$'+a.dollars));
+      }
+
+      row.onclick = () => send({cmd:'step', index: a._idx});
+      grp.appendChild(row);
+    });
+
+    container.appendChild(grp);
+  });
+
+  m.appendChild(container);
+
+  if(scrollTarget){
+    requestAnimationFrame(() => scrollTarget.scrollIntoView({block:'nearest', behavior:'smooth'}));
+  }
 }
 
 function renderReplayNav(s){
   const row = $('acts-row'); row.innerHTML = '';
+  $('acts-label').textContent = 'Navigation';
+  $('watch-note').classList.remove('show');
   const total = s.total_steps || 0;
   const idx   = s.step_index ?? 0;
   replayTotalSteps = total;
 
-  const nav = mk('div','replay-nav');
+  const nav = mk('div', 'replay-nav');
 
-  const prev = mk('button','btn','◀ Prev');
+  const prev = mk('button', 'btn', '◀ Prev');
+  prev.title = 'Previous step (← arrow key)';
   prev.disabled = idx === 0;
   prev.onclick = () => send({cmd:'prev'});
 
-  const next = mk('button','btn success','Next ▶');
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 0; slider.max = Math.max(0, total-1);
+  slider.value = idx; slider.className = 'rn-slider';
+  slider.oninput = () => send({cmd:'step', index: parseInt(slider.value)});
+
+  const next = mk('button', 'btn success', 'Next ▶');
+  next.title = 'Next step (→ arrow key)';
   next.disabled = idx >= total - 1;
   next.onclick = () => send({cmd:'next'});
 
-  const slider = document.createElement('input');
-  slider.type = 'range'; slider.min = 0; slider.max = Math.max(0, total-1);
-  slider.value = idx;
-  slider.oninput = () => send({cmd:'step', index: parseInt(slider.value)});
-
-  const lbl = mk('div','rn-step', `Step ${idx+1} / ${total}`);
+  const lbl = mk('div', 'rn-step', `${idx + 1} / ${total}`);
 
   nav.appendChild(prev);
   nav.appendChild(slider);
   nav.appendChild(next);
   nav.appendChild(lbl);
   row.appendChild(nav);
-
-  // Current action detail
-  const cur = s.current_action || {};
-  if(cur.type){
-    const box = mk('div','replay-action');
-    const type = cur.type;
-    let detail = '';
-    if(type === 'play'){
-      detail = `<span class="ra-play">${esc(cur.hand_type||'?')} — ${fmt(cur.total)} pts</span>  <span style="color:#4a6a4a;font-size:10px">${(cur.cards||[]).join(' ')}</span>`;
-    } else if(type === 'buy'){
-      detail = `<span class="ra-buy">${esc(cur.card||'?')} · $${cur.cost||0}</span>`;
-    } else if(type === 'sell'){
-      detail = `<span class="ra-sell">${esc(cur.card||'?')} · +$${cur.gold||0}</span>`;
-    } else if(type === 'discard'){
-      detail = `<span class="ra-discard">${(cur.cards||[]).join(' ')}</span>`;
-    } else if(type === 'blind'){
-      detail = `<span class="ra-blind">${esc(cur.name||'?')} · ${fmt(cur.chips)} chips</span>`;
-    } else {
-      detail = esc(JSON.stringify(cur));
-    }
-    box.innerHTML = `<span class="ra-type">${esc(type)}</span>  ${detail}`;
-    row.appendChild(box);
-  }
 }
 
 function renderReplayState(s){
-  // Update episode picker active state
   if(s.episode_index !== replayActiveEp){
     replayActiveEp = s.episode_index;
-    renderReplayPicker(replayEpisodes);
+    renderReplaySidebar(replayEpisodes);
   }
 
-  // Update header with replay info
   $('h-phase').textContent = 'Replay';
-  $('h-ante').textContent = `A${s.ante_reached||0} · ${s.rounds_beaten||0} rounds${s.won?' ✓':''}`;
+  $('h-ante').textContent  = `A${s.ante_reached||0} · ${s.rounds_beaten||0} rounds${s.won?' ✓':''}`;
   $('h-money').textContent = `Ep ${s.episode_index??0}`;
   $('h-hands').textContent = `${(s.hand_history||[]).length} hands`;
-  $('h-disc').textContent = `${s.total_steps||0} steps`;
+  $('h-disc').textContent  = `${s.total_steps||0} steps`;
+  $('h-won').style.display = s.won ? '' : 'none';
 
-  // Sidebar — show jokers active at this step
-  const jb = $('joker-body'); jb.innerHTML = '';
-  $('joker-count').textContent = s.current_jokers?.length ? `${s.current_jokers.length}` : '';
-  if(s.current_jokers?.length){
-    s.current_jokers.forEach(name => {
-      const jc = mk('div','jcard');
-      jc.innerHTML = `<span class="ji">🃏</span><span class="jn">${esc(name)}</span>`;
-      jb.appendChild(jc);
-    });
-  } else {
-    jb.appendChild(mk('span','empty','No jokers at this step'));
-  }
-  const cb = $('cons-body'); cb.innerHTML = '';
-  cb.appendChild(mk('span','empty','—'));
-
-  // Main area — show action log timeline
-  const m = $('main'); m.innerHTML = '';
-  const p = mk('div','panel'); p.id = 'hand-panel';
-  p.innerHTML = `<div class="ph">Action Log <span class="ph-right">${(s.action_log||[]).length} total actions</span></div>`;
-  const b = mk('div','pb col');
-  (s.action_log||[]).forEach((a, i) => {
-    const isActive = i === (s.step_index??0);
-    const row = mk('div','', '');
-    row.style.cssText = `font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;border-left:2px solid ${isActive?'#4fa85a':'transparent'};background:${isActive?'rgba(100,180,100,0.1)':'transparent'};color:${isActive?'#e0e6e0':'#6b8f70'};`;
-    const typeColor = {play:'#f0c040',buy:'#c9952a',sell:'#f87171',discard:'#5bc8f5',blind:'#a78bfa'}[a.type]||'#9dd89d';
-    let label = `A${a.ante}·R${a.round} `;
-    if(a.type==='play') label += `[${a.hand_type||'?'} → ${fmt(a.total)}]`;
-    else if(a.type==='buy') label += `[buy ${a.card||'?'} $${a.cost||0}]`;
-    else if(a.type==='sell') label += `[sell ${a.card||'?'} +$${a.gold||0}]`;
-    else if(a.type==='discard') label += `[discard ${(a.cards||[]).join(' ')}]`;
-    else if(a.type==='blind') label += `[blind: ${a.name||'?'}]`;
-    else label += `[${a.type}]`;
-    row.innerHTML = `<span style="color:${typeColor};font-weight:700;font-size:9.5px;text-transform:uppercase;">${esc(a.type)}</span>  ${esc(label)}`;
-    row.onclick = () => send({cmd:'step', index: i});
-    b.appendChild(row);
-  });
-  if(!(s.action_log||[]).length) b.appendChild(mk('span','empty','No actions recorded'));
-  p.appendChild(b); m.appendChild(p);
-
-  // Hand history panel
-  renderHandHistory(s);
-
-  // Nav controls
-  renderReplayNav(s);
-
-  // Score bar — show episode progress
-  const totalHands = s.hand_history?.length || 0;
-  const stepPct = s.total_steps ? (s.step_index??0) / s.total_steps : 0;
-  $('bar').style.width = (stepPct*100).toFixed(1)+'%';
+  const pct = s.total_steps ? (s.step_index??0) / s.total_steps : 0;
+  $('bar').style.width   = (pct*100).toFixed(1) + '%';
   $('s-cur').textContent = `Step ${(s.step_index??0)+1}`;
   $('s-max').textContent = `${s.total_steps||0}`;
-  $('s-pct').textContent = `${totalHands} hands`;
+  $('s-pct').textContent = s.won ? '🏆 Won' : `${(s.hand_history||[]).length} hands`;
   $('heval').classList.remove('visible');
+
+  renderReplayTimeline(s);
+  renderHandHistory(s);
+  renderReplayNav(s);
+}
+
+function renderReplayPicker(episodes){
+  replayEpisodes = episodes;
+  renderReplaySidebar(episodes);
 }
 
 /* ── Init ────────────────────────────────────────────────── */
@@ -555,8 +651,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(isReplay){
     $('h-mode').textContent = '⏪ Replay';
     document.title = 'Jackdaw — Replay';
-    $('replay-picker').style.display = 'flex';
     $('watch-note').style.display = 'none';
+    // Keyboard navigation
+    document.addEventListener('keydown', e => {
+      if(!isReplay) return;
+      if(e.key === 'ArrowLeft')  { e.preventDefault(); send({cmd:'prev'}); }
+      if(e.key === 'ArrowRight') { e.preventDefault(); send({cmd:'next'}); }
+    });
     connect();
   } else {
     $('h-mode').textContent = isPlay ? '▶ Play' : '👁 Watch';
