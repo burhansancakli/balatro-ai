@@ -184,6 +184,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
+    # Some terminals (notably Windows' default cp1252 console) can't encode
+    # the Unicode glyphs (→, 🃏, etc.) used in status output. Reconfigure
+    # stdout/stderr to UTF-8 with a safe fallback so a print() never crashes
+    # the whole process over a single unsupported character.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
