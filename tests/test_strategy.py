@@ -173,3 +173,57 @@ def test_pick_best_action_flush_hunt():
     assert action_type == "discard"
     assert set(indices).issubset({4, 5, 6, 7})
 
+
+def test_pick_best_action_flush_already_held():
+    hand = [
+        {"rank": "A", "suit": "H"},
+        {"rank": "K", "suit": "H"},
+        {"rank": "Q", "suit": "H"},
+        {"rank": "J", "suit": "H"},
+        {"rank": "9", "suit": "H"},
+        {"rank": "2", "suit": "S"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+    ]
+    action_type, indices, hand_type = pick_best_action(hand, Strategy.FLUSH_BUILD, discards_left=2, num_simulations=100)
+    # Since we already have a flush, we should play it and not waste a discard.
+    assert action_type == "play"
+    assert hand_type == "flush"
+
+
+def test_pick_best_action_pair_still_discarded_for_upgrade():
+    hand = [
+        {"rank": "A", "suit": "S"},
+        {"rank": "A", "suit": "H"},
+        {"rank": "2", "suit": "S"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+        {"rank": "5", "suit": "S"},
+        {"rank": "6", "suit": "H"},
+        {"rank": "7", "suit": "C"},
+    ]
+    action_type, indices, hand_type = pick_best_action(hand, Strategy.PAIR_BUILD, discards_left=2, num_simulations=100)
+    # A Pair is not a satisfactory hand, and the EV of discarding to find Three-of-a-Kind/Full House
+    # is at least 10% higher than just playing the Pair.
+    assert action_type == "discard"
+
+
+def test_pick_best_action_mult_build_no_minor_discard():
+    # A Flush under MULT_BUILD
+    hand = [
+        {"rank": "A", "suit": "H"},
+        {"rank": "K", "suit": "H"},
+        {"rank": "Q", "suit": "H"},
+        {"rank": "J", "suit": "H"},
+        {"rank": "9", "suit": "H"},
+        {"rank": "2", "suit": "S"},
+        {"rank": "3", "suit": "C"},
+        {"rank": "4", "suit": "D"},
+    ]
+    action_type, indices, hand_type = pick_best_action(hand, Strategy.MULT_BUILD, discards_left=2, num_simulations=100)
+    # The expected improvement from discarding to turn the 9 of Hearts into a higher heart is minor (< 10%).
+    # So we should play it immediately.
+    assert action_type == "play"
+    assert hand_type == "flush"
+
+
