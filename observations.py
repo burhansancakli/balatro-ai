@@ -101,9 +101,6 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
     obs[1] = _clip_norm(raw_state.get("round_num", 0), MAX_ROUND)
     money_val = _clip_norm(raw_state.get("money", 0), MAX_MONEY)
 
-    if raw_state.get("ante_num", 0) >= 5:
-        print("SUCCESS")
-
     # Money is downweighted by 50% after ante 3, because it becomes less relevant to save money for future rounds.
     obs[2] = money_val * 0.5 if raw_state.get("ante_num", 0) >= 3 else money_val
     obs[3] = _clip_norm(blind_target, MAX_BLIND)

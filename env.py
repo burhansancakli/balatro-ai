@@ -6,6 +6,8 @@ Designed to be instantiated multiple times on different ports
 for parallel training via stable-baselines3 SubprocVecEnv.
 """
 
+import itertools
+import random
 import time
 from pathlib import Path
 import numpy as np
@@ -14,7 +16,7 @@ from gymnasium import spaces
 from typing import Optional, Tuple
 
 from config import (
-    SEED, DECK, STAKE, MAX_STEPS,
+    SEED, DECK, STAKE, MAX_STEPS, SAVE_DIR,
     POLL_INTERVAL, POLL_TIMEOUT,
     SURVIVAL_REWARD, PROGRESS_REWARD_SCALE, CASH_OUT_SETTLE_WAIT,
 )
@@ -62,14 +64,20 @@ class BalatroEnv(gym.Env):
         port: int = 12346,
         save_path: str = Path.cwd() / "fresh_balatro.jkr",
         seed: str = SEED,
+        seeds: Optional[list[str]] = None,
         render_mode: Optional[str] = None,
         backend=None,
+        delay: float = 0.0,
     ):
         super().__init__()
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
         self.backend   = backend
+        self.delay     = delay  # seconds to sleep after each step
+
+        # Seed cycling: rotate through seeds on each reset()
+        self._seeds = seeds if seeds and len(seeds) > 0 else [seed]
 
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0,
@@ -92,6 +100,10 @@ class BalatroEnv(gym.Env):
         options: Optional[dict] = None,
     ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
+
+        # Pick a random seed for this episode
+        self.seed = random.choice(self._seeds)
+        self.save_path = str(SAVE_DIR / f"fresh_{self.seed}.jkr")
 
         # Fast reset via load() — 6.75x faster than start()
         self._call("load", {"path": self.save_path})
@@ -162,6 +174,9 @@ class BalatroEnv(gym.Env):
         terminated = done
         truncated  = self._steps >= MAX_STEPS
         info = self._make_info(gamestate, hand_logs, action)
+
+        if self.delay > 0:
+            time.sleep(self.delay)
 
         return obs, total_reward, terminated, truncated, info
 

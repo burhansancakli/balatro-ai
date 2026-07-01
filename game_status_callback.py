@@ -5,12 +5,12 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 
 class GameStatusCallback(BaseCallback):
-    """Display one live status line per seed using tqdm."""
+    """Display one live status line per env instance using tqdm."""
 
     def __init__(self, verbose=0, total_steps: int = 100_000):
         super().__init__(verbose)
-        self.status_by_seed = {}
-        self.seed_bars = {}
+        self.status_by_idx = {}
+        self.instance_bars = {}
         self.progress_bar = None
         self.total_steps = total_steps
         self.last_timesteps = 0
@@ -20,30 +20,30 @@ class GameStatusCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         try:
-            seeds = self.training_env.get_attr("seed")
+            n_envs = self.training_env.num_envs
         except Exception:
-            seeds = []
+            n_envs = 0
 
-        if seeds and sys.stdout.isatty():
-            for seed in seeds:
+        if n_envs and sys.stdout.isatty():
+            for idx in range(n_envs):
                 bar = tqdm(
                     total=1,
-                    position=len(self.seed_bars),
+                    position=idx,
                     bar_format="{desc} {postfix}",
                     leave=True,
                     dynamic_ncols=False,
                     ncols=120,
                     disable=False,
                 )
-                bar.set_description_str(f"[seed {seed}]")
+                bar.set_description_str(f"[env {idx}]")
                 bar.set_postfix_str(self._format_postfix("waiting..."))
                 bar.n = 1
                 bar.refresh()
-                self.seed_bars[seed] = bar
+                self.instance_bars[idx] = bar
 
             self.progress_bar = tqdm(
                 total=self.total_steps,
-                position=len(self.seed_bars),
+                position=n_envs,
                 desc="Training",
                 leave=True,
                 dynamic_ncols=False,
@@ -54,21 +54,23 @@ class GameStatusCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
-        updated = False
 
-        for info in infos:
+        for idx, info in enumerate(infos):
             jokers = info.get("joker_labels", [])
             joker_str = ", ".join(jokers) if jokers else "none"
             action_label = info.get("action_label", "?")
+            ante = info.get("ante", "?")
+            round_num = info.get("round", "?")
 
-            for line in info.get("hand_logs", []):
-                match = re.match(r"\[seed ([^\]]+)\] (.*)", line)
-                if match:
-                    seed = match.group(1)
-                    msg = match.group(2)
-                    full_msg = f"{msg}  |  buy={action_label}  |  jokers=[{joker_str}]"
-                    self.status_by_seed[seed] = full_msg
-                    updated = True
+            # Use last hand log if any, otherwise build a minimal status
+            hand_logs = info.get("hand_logs", [])
+            if hand_logs:
+                msg = hand_logs[-1]
+            else:
+                msg = f"ante={ante} round={round_num}"
+
+            full_msg = f"{msg}  |  buy={action_label}  |  jokers=[{joker_str}]"
+            self.status_by_idx[idx] = full_msg
 
         if self.progress_bar is not None:
             current = self.num_timesteps
@@ -77,17 +79,16 @@ class GameStatusCallback(BaseCallback):
                 self.progress_bar.update(delta)
                 self.last_timesteps = current
 
-        if updated:
-            for seed, msg in self.status_by_seed.items():
-                bar = self.seed_bars.get(seed)
-                if bar is not None:
-                    bar.set_postfix_str(self._format_postfix(msg))
-                    bar.refresh()
+        for idx, msg in self.status_by_idx.items():
+            bar = self.instance_bars.get(idx)
+            if bar is not None:
+                bar.set_postfix_str(self._format_postfix(msg))
+                bar.refresh()
 
         return True
 
     def _on_training_end(self) -> None:
         if self.progress_bar is not None:
             self.progress_bar.close()
-        for bar in self.seed_bars.values():
+        for bar in self.instance_bars.values():
             bar.close()
