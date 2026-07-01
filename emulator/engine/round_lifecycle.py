@@ -206,8 +206,8 @@ def reset_round_targets(
     cr = game_state["current_round"]
     deck: list[Card] = game_state.get("deck", [])
 
-    # Filter out Stone cards — only non-Stone playing cards are eligible
-    valid_cards = [c for c in deck if _card_effect(c) != "Stone Card"]
+    # Filter out Stone cards and non-playing cards — only normal playing cards with a base are eligible
+    valid_cards = [c for c in deck if c is not None and c.base is not None and _card_effect(c) not in ("Stone Card", "m_stone")]
 
     # ------------------------------------------------------------------
     # reset_idol_card — common_events.lua:2271-2286
@@ -229,7 +229,8 @@ def reset_round_targets(
         seed_val = rng.seed("mail" + str(ante))
         mail, _ = rng.element(valid_cards, seed_val)
         cr["mail_card"]["rank"] = _card_rank_str(mail)
-        cr["mail_card"]["id"] = mail.base.id
+        if mail.base is not None:
+            cr["mail_card"]["id"] = mail.base.id
 
     # ------------------------------------------------------------------
     # reset_ancient_card — common_events.lua:2303-2310
