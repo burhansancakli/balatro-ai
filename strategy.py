@@ -453,6 +453,15 @@ def pick_best_action(
     if discards_left <= 0:
         return "play", play_indices, play_hand
 
+    # If the current best play is already a satisfactory target hand for the strategy, do not discard.
+    satisfactory_hands = {
+        Strategy.FLUSH_BUILD: {"flush", "straight_flush", "flush_house", "flush_five"},
+        Strategy.PAIR_BUILD: {"three_of_a_kind", "full_house", "four_of_a_kind", "five_of_a_kind", "flush_house", "flush_five"},
+        Strategy.MULT_BUILD: {"straight", "flush", "full_house", "four_of_a_kind", "straight_flush", "five_of_a_kind", "flush_house", "flush_five"},
+    }
+    if play_hand in satisfactory_hands.get(strategy, set()):
+        return "play", play_indices, play_hand
+
     remaining_deck = get_remaining_deck(hand_cards)
     candidates = get_discard_candidates(hand_cards, strategy, joker_labels=joker_labels)
 
@@ -472,8 +481,8 @@ def pick_best_action(
             best_discard_ev = ev
             best_discard_indices = cand
 
-    # Discard if expected value of discarding is strictly greater than playing immediately
-    if best_discard_ev > play_score:
+    # Discard only if expected value of discarding is at least 10% greater than playing immediately
+    if best_discard_ev > play_score * 1.10:
         return "discard", best_discard_indices, None
 
     return "play", play_indices, play_hand
