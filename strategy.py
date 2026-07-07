@@ -117,26 +117,49 @@ def _classify_hand(cards: List[dict]) -> Tuple[str, dict]:
     metadata = {
         "is_flush": is_flush,
         "rank_counts": rank_counts,
+        "counts": counts,
     }
     return hand_type, metadata
 
 
-def _score_hand(cards: List[dict], joker_labels: Optional[List[str]] = None) -> Tuple[str, int]:
+def _score_hand(cards: List[dict], joker_labels: Optional[List[str]] = None,
+                _cache: Optional[dict] = None) -> Tuple[str, int]:
     """
     Score a played hand using simplified Balatro Chips x Mult arithmetic.
 
     The 13 whitelisted joker effects are modeled deterministically. This keeps
     the low-level executor non-RL while allowing shop purchases to influence
     card choice.
+
+    Args:
+        _cache: Optional per-call dict cache keyed by sorted card tuples.
+                Avoids redundant scoring of the same 5-card combo across
+                Monte Carlo simulations within a single pick_best_action call.
     """
+    # Check per-call cache (cards sorted for canonical key)
+    if _cache is not None:
+        cache_key = tuple(sorted((c.get("rank", ""), c.get("suit", "")) for c in cards))
+        cached = _cache.get(cache_key)
+        if cached is not None:
+            return cached
+
     hand_type, metadata = _classify_hand(cards)
     chips, mult = HAND_SCORES[hand_type]
-    chips += sum(_card_chip_value(c.get("rank", "")) for c in cards)
+    # Inline chip sum — avoids function call overhead per card
+    card_chips = 0
+    for c in cards:
+        card_chips += RANK_VALUES.get(c.get("rank", ""), 0)
+    chips += card_chips
 
     for label in joker_labels or []:
         chips, mult = _apply_joker(label, cards, hand_type, metadata, chips, mult, joker_labels or [])
 
-    return hand_type, chips * mult
+    result = (hand_type, chips * mult)
+
+    if _cache is not None:
+        _cache[cache_key] = result
+
+    return result
 
 
 def _evaluate_5card_hand(cards: List[dict]) -> Tuple[str, int]:
@@ -154,31 +177,47 @@ def _apply_joker(
     joker_labels: List[str],
 ) -> Tuple[int, int]:
     """Apply one whitelisted joker effect to the current Chips/Mult totals."""
-    rank_counts = metadata["rank_counts"]
-    pair_count = sum(1 for count in rank_counts.values() if count >= 2)
-    has_pair = any(count >= 2 for count in rank_counts.values())
-    has_three = any(count >= 3 for count in rank_counts.values())
-    has_two_pair = pair_count >= 2
+    # Use pre-computed sorted counts from metadata to avoid re-scanning
+    # rank_counts.values() with any()/sum() on every joker call.
+    counts = metadata["counts"]
+    has_pair = counts[0] >= 2 if counts else False
+    has_three = counts[0] >= 3 if counts else False
+    has_two_pair = len(counts) >= 2 and counts[1] >= 2
     has_flush = metadata["is_flush"]
 
-    if label == "Droll Joker" and has_flush:
-        mult += 10
-    elif label == "Crafty Joker" and has_flush:
-        chips += 80
+    if label == "Droll Joker":
+        if has_flush:
+            mult += 10
+    elif label == "Crafty Joker":
+        if has_flush:
+            chips += 80
     elif label == "Lusty Joker":
-        mult += 3 * sum(1 for card in cards if card.get("suit") == "H")
+        count = 0
+        for card in cards:
+            if card.get("suit") == "H":
+                count += 1
+        mult += 3 * count
     elif label == "Greedy Joker":
-        mult += 3 * sum(1 for card in cards if card.get("suit") == "D")
-    elif label == "Jolly Joker" and has_pair:
-        mult += 8
-    elif label == "Zany Joker" and has_three:
-        mult += 12
-    elif label == "Mad Joker" and has_two_pair:
-        mult += 10
-    elif label == "Sly Joker" and has_pair:
-        chips += 50
-    elif label == "Wily Joker" and has_three:
-        chips += 100
+        count = 0
+        for card in cards:
+            if card.get("suit") == "D":
+                count += 1
+        mult += 3 * count
+    elif label == "Jolly Joker":
+        if has_pair:
+            mult += 8
+    elif label == "Zany Joker":
+        if has_three:
+            mult += 12
+    elif label == "Mad Joker":
+        if has_two_pair:
+            mult += 10
+    elif label == "Sly Joker":
+        if has_pair:
+            chips += 50
+    elif label == "Wily Joker":
+        if has_three:
+            chips += 100
     elif label == "Joker":
         mult += 4
     elif label == "Abstract Joker":
@@ -186,7 +225,11 @@ def _apply_joker(
     elif label == "Half Joker" and len(cards) <= 3:
         mult += 20
     elif label == "Scary Face":
-        chips += 30 * sum(1 for card in cards if card.get("rank") in {"J", "Q", "K"})
+        count = 0
+        for card in cards:
+            if card.get("rank") in {"J", "Q", "K"}:
+                count += 1
+        chips += 30 * count
 
     return chips, mult
 
@@ -220,6 +263,7 @@ def pick_best_play(
     strategy: Strategy,
     n_play: int = 5,
     joker_labels: Optional[List[str]] = None,
+    _cache: Optional[dict] = None,
 ) -> Tuple[List[int], str, int]:
     """
     Given a list of card dicts and a strategy, return the best play.
@@ -253,7 +297,7 @@ def pick_best_play(
     for size in play_sizes:
         for combo in combinations(range(n), size):
             cards = [hand_cards[i] for i in combo]
-            hand_type, base_score = _score_hand(cards, joker_labels)
+            hand_type, base_score = _score_hand(cards, joker_labels, _cache=_cache)
             preference = prefs.get(hand_type, 1)
 
             if strategy == Strategy.MULT_BUILD:
@@ -403,7 +447,10 @@ def get_discard_candidates(
             seen.add(cand_tuple)
             unique_candidates.append(list(cand_tuple))
 
-    return unique_candidates
+    # Cap at 4 candidates to limit Monte Carlo work — the most promising
+    # candidates appear first (unused cards, flush hunts, singletons)
+    # so truncating at 4 rarely loses the best option.
+    return unique_candidates[:4]
 
 
 def evaluate_discard(
@@ -412,24 +459,39 @@ def evaluate_discard(
     remaining_deck: List[dict],
     strategy: Strategy,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 50,
+    num_simulations: int = 20,
+    play_score: float = 0.0,
+    _cache: Optional[dict] = None,
 ) -> float:
     """
     Simulates drawing cards to evaluate the EV of discarding a subset of cards.
+
+    Uses early-exit pruning: if after half the simulations the running EV
+    is below the current play_score, the remaining simulations are skipped
+    since this candidate is unlikely to beat the play threshold.
     """
     import random
     k = len(discard_indices)
     if k == 0 or len(remaining_deck) < k:
         return -1.0
 
-    kept_cards = [hand_cards[i] for i in range(len(hand_cards)) if i not in discard_indices]
+    discard_set = set(discard_indices)
+    kept_cards = [hand_cards[i] for i in range(len(hand_cards)) if i not in discard_set]
     total_score = 0.0
+    half = num_simulations // 2
 
-    for _ in range(num_simulations):
+    for sim_i in range(num_simulations):
         drawn = random.sample(remaining_deck, k)
         simulated_hand = kept_cards + drawn
-        _, _, score = pick_best_play(simulated_hand, strategy, joker_labels=joker_labels)
+        _, _, score = pick_best_play(simulated_hand, strategy, joker_labels=joker_labels, _cache=_cache)
         total_score += score
+
+        # Early exit: if halfway through and running EV is below play_score,
+        # this candidate is unlikely to beat the 1.10x threshold — skip it.
+        if sim_i == half and half > 0 and play_score > 0:
+            running_ev = total_score / (sim_i + 1)
+            if running_ev < play_score:
+                return running_ev
 
     return total_score / num_simulations
 
@@ -439,7 +501,7 @@ def pick_best_action(
     strategy: Strategy,
     discards_left: int,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 50,
+    num_simulations: int = 20,
 ) -> Tuple[str, List[int], Optional[str]]:
     """
     Decides whether to play or discard using Monte Carlo evaluation of discard candidates.
@@ -448,7 +510,10 @@ def pick_best_action(
              play hand type (or None if discarding).
     """
     joker_labels = joker_labels or []
-    play_indices, play_hand, play_score = pick_best_play(hand_cards, strategy, joker_labels=joker_labels)
+    # Per-call cache: avoids re-scoring the same 5-card combo across MC simulations.
+    # Keyed by sorted (rank, suit) tuples. Discarded after this call returns.
+    _cache: dict = {}
+    play_indices, play_hand, play_score = pick_best_play(hand_cards, strategy, joker_labels=joker_labels, _cache=_cache)
 
     if discards_left <= 0:
         return "play", play_indices, play_hand
@@ -476,6 +541,8 @@ def pick_best_action(
             strategy=strategy,
             joker_labels=joker_labels,
             num_simulations=num_simulations,
+            play_score=play_score,
+            _cache=_cache,
         )
         if ev > best_discard_ev:
             best_discard_ev = ev
