@@ -459,7 +459,7 @@ def evaluate_discard(
     remaining_deck: List[dict],
     strategy: Strategy,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 20,
+    num_simulations: int = 50,
     play_score: float = 0.0,
     _cache: Optional[dict] = None,
 ) -> float:
