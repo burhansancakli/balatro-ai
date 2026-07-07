@@ -15,8 +15,6 @@ SEED            = "TRAIN01"
 MAX_STEPS       = 500
 
 # ── RPC / polling ───────────────────────────────────────────
-RPC_RETRIES     = 3        # retry count on timeout
-RPC_RETRY_WAIT  = 0.5     # seconds between retries
 POLL_INTERVAL   = 0.02    # seconds between state polls
 POLL_TIMEOUT    = 30.0    # max seconds to wait for a state transition
 
@@ -30,10 +28,10 @@ SAVE_DIR        = Path.cwd() / "balatro_saves"
 MODEL_DIR       = "./models"
 LOG_DIR         = "./logs"
 TOTAL_STEPS     = 100_000
-N_STEPS         = 256
+N_STEPS         = 2_000
 BATCH_SIZE      = 64
 N_EPOCHS        = 10
 LEARNING_RATE   = 0.0003
 GAMMA           = 0.99
-EVAL_FREQ       = 256
+EVAL_FREQ       = 2_000
 CHECKPOINT_FREQ = 2_000

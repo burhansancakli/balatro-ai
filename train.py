@@ -6,7 +6,6 @@ No more manual terminal juggling.
 
 Usage:
     python train.py              # start instances + train
-    python train.py --setup-only # just create save files
 
 Requirements:
     pip install stable-baselines3 gymnasium requests numpy
