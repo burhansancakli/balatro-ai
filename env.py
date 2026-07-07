@@ -70,12 +70,19 @@ class BalatroEnv(gym.Env):
         seed: str = SEED,
         render_mode: Optional[str] = None,
         backend=None,
+        randomize_seeds: bool = True,
     ):
         super().__init__()
         self.port      = port
         self.save_path = save_path
         self.seed      = seed
+        self.label     = seed   # stable identity for status displays
         self.backend   = backend
+        # Fresh game seed every episode prevents the policy from
+        # memorizing one fixed deck/shop sequence (overfitting).
+        # Only possible with SimBackend — live mode needs pre-created
+        # save files, so it keeps the fixed seed.
+        self.randomize_seeds = randomize_seeds
 
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0,
@@ -102,6 +109,13 @@ class BalatroEnv(gym.Env):
         options: Optional[dict] = None,
     ) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
+
+        # Draw a fresh game seed for this episode (emulator mode only)
+        if self.randomize_seeds and isinstance(self.backend, SimBackend):
+            self.seed = f"T{int(self.np_random.integers(0, 1_000_000)):06d}"
+            self.save_path = str(
+                Path(str(self.save_path)).with_name(f"fresh_{self.seed}.jkr")
+            )
 
         # Fast reset via load() — 6.75x faster than start()
         self._call("load", {"path": self.save_path})
@@ -148,9 +162,18 @@ class BalatroEnv(gym.Env):
         hand_logs    = []
         state        = self._last_gamestate
 
+        # Label must be captured from the shop state the action executes
+        # against — the post-ante state has the NEXT shop's cards, which
+        # would attribute buys/sells to the wrong jokers.
+        action_label = "skip"
+
         # ── Phase 1: Handle shop if we're in one ─────────────
         if state.get("state") == "SHOP":
-            self._execute_shop_action(state, shop_action)
+            action_label = self._compute_action_label(state, shop_action)
+            executed, shop_reward = self._execute_shop_action(state, shop_action)
+            if not executed:
+                action_label = "skip"  # action was refused (broke, no slot, bad index)
+            total_reward += shop_reward
             total_reward += self._outcome_reward(state)
 
             # Refresh state — joker effects during buy/sell can mutate the
@@ -166,7 +189,7 @@ class BalatroEnv(gym.Env):
                 total_reward += self._outcome_reward(state)
                 self._episode_reward += total_reward
                 obs = gamestate_to_observation(state, self._active_strategy)
-                info = self._make_info(state, hand_logs, shop_action)
+                info = self._make_info(state, hand_logs, shop_action, action_label)
                 return obs, total_reward, True, False, info
 
         # ── Phase 2: Play hands until next shop (or game over)
@@ -179,26 +202,29 @@ class BalatroEnv(gym.Env):
 
         terminated = done
         truncated  = self._steps >= MAX_STEPS
-        info = self._make_info(gamestate, hand_logs, shop_action)
+        info = self._make_info(gamestate, hand_logs, shop_action, action_label)
 
         return obs, total_reward, terminated, truncated, info
 
-    def _make_info(self, gamestate: dict, hand_logs: list, action: int) -> dict:
-        joker_labels = parse_jokers_from_gamestate(gamestate)
-        shop = gamestate.get("shop", {}) or {}
+    def _compute_action_label(self, state: dict, action: int) -> str:
+        """Human-readable label for a shop action against the state it
+        executes in (call BEFORE executing the action)."""
+        shop = state.get("shop", {}) or {}
         shop_cards = shop.get("cards", []) or []
-        jokers = gamestate.get("jokers", {}) or {}
+        jokers = state.get("jokers", {}) or {}
         joker_cards = jokers.get("cards", []) or []
 
-        action_label = "skip"
         if 1 <= action <= MAX_SHOP_SLOTS and action - 1 < len(shop_cards):
-            action_label = f"buy:{shop_cards[action - 1].get('label', f'card_{action-1}')}"
-        elif MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
+            return f"buy:{shop_cards[action - 1].get('label', f'card_{action-1}')}"
+        if MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
             sell_idx = action - MAX_SHOP_SLOTS - 1
             if sell_idx < len(joker_cards):
-                action_label = f"sell:{joker_cards[sell_idx].get('label', f'joker_{sell_idx}')}"
-            else:
-                action_label = f"sell:empty_{sell_idx}"
+                return f"sell:{joker_cards[sell_idx].get('label', f'joker_{sell_idx}')}"
+            return f"sell:empty_{sell_idx}"
+        return "skip"
+
+    def _make_info(self, gamestate: dict, hand_logs: list, action: int, action_label: str = "skip") -> dict:
+        joker_labels = parse_jokers_from_gamestate(gamestate)
 
         return {
             "action":         action,
@@ -321,7 +347,7 @@ class BalatroEnv(gym.Env):
         if action_type == "discard":
             discarded_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
             action_summary = (
-                f"[seed {self.seed}] ante={state.get('ante_num','?')} "
+                f"[seed {self.label}] ante={state.get('ante_num','?')} "
                 f"round={state.get('round_num','?')} strategy={strategy.name} "
                 f"action=discard discarded=[{', '.join(discarded_cards)}]"
             )
@@ -331,7 +357,7 @@ class BalatroEnv(gym.Env):
         else:
             played_cards = [f"{hand_cards[i]['rank']}{hand_cards[i]['suit'][0].upper()}" for i in indices]
             hand_summary = (
-                f"[seed {self.seed}] ante={state.get('ante_num','?')} "
+                f"[seed {self.label}] ante={state.get('ante_num','?')} "
                 f"round={state.get('round_num','?')} strategy={strategy.name} "
                 f"hand={hand_type} played=[{', '.join(played_cards)}]"
             )
@@ -343,12 +369,14 @@ class BalatroEnv(gym.Env):
 
             return new_state, reward, hand_summary
 
-    def _execute_shop_action(self, state: dict, action: int) -> float:
+    def _execute_shop_action(self, state: dict, action: int) -> Tuple[bool, float]:
         """Execute the agent's shop action.
         action 0 = skip, 1-4 = buy, 5-9 = sell joker.
+        Returns (executed, reward) — executed is False when the action
+        was refused (invalid index, can't afford, no slot).
         """
         if action == 0:
-            return 0.0  # skip
+            return False, 0.0  # skip
 
         # ── Buy actions (1-4) ──────────────────────────────────
         if 1 <= action <= MAX_SHOP_SLOTS:
@@ -357,27 +385,26 @@ class BalatroEnv(gym.Env):
             buy_idx = action - 1
 
             if buy_idx >= len(shop_cards):
-                return 0.0  # invalid index
+                return False, 0.0  # invalid index
 
             card = shop_cards[buy_idx]
-            label = card.get("label", "")
             key   = card.get("key", "")
             card_set = card.get("set", "")
 
             # Only allow buying actual jokers
             if card_set != "JOKER" and not str(key).startswith("j_"):
-                return 0.0
+                return False, 0.0
 
             cost  = self._buy_cost(card)
             money = int(state.get("money", 0) or 0)
             if cost > money:
-                return 0.0  # can't afford
+                return False, 0.0  # can't afford
             if not self._has_joker_slot(state):
-                return 0.0  # no room
+                return False, 0.0  # no room
 
             self._call("buy", {"card": int(buy_idx)})
             self._jokers_bought_episode += 1
-            return 0.0
+            return True, 0.0
 
         # ── Sell actions (5-9) ─────────────────────────────────
         if MAX_SHOP_SLOTS + 1 <= action <= MAX_SHOP_SLOTS + MAX_JOKER_SLOTS:
@@ -386,13 +413,12 @@ class BalatroEnv(gym.Env):
             joker_cards = jokers.get("cards", []) or []
 
             if sell_idx >= len(joker_cards):
-                return 0.0  # no joker at that slot
+                return False, 0.0  # no joker at that slot
 
-            label = joker_cards[sell_idx].get("label", f"joker_{sell_idx}")
             self._call("sell", {"joker": int(sell_idx)})
-            return -0.05  # small penalty to discourage random selling
+            return True, -0.05  # small penalty to discourage random selling
 
-        return 0.0  # unknown action
+        return False, 0.0  # unknown action
 
 
     def _has_joker_slot(self, state: dict) -> bool:

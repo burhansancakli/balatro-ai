@@ -73,12 +73,23 @@ balatro-ai/
 ```bash
 pip install stable-baselines3 gymnasium numpy torch websockets
 
-# Train with the in-process emulator, 4 parallel envs
-python train.py --emulator -n 4
+# Train with the in-process emulator (4 parallel envs by default)
+python train.py --emulator
+
+# Custom length / device
+python train.py --emulator -n 8 --steps 500000
+python train.py --emulator --device cuda
 
 # Monitor training
 tensorboard --logdir ./logs
 ```
+
+Training uses per-episode random game seeds (emulator mode), so the
+agent generalizes across decks/shops instead of memorizing fixed runs.
+Learning rate and clip range decay linearly; the entropy bonus anneals
+from 0.05 to 0.005 so the agent explores strategies early and commits
+late. Evaluation runs on unseen seeds every 10k steps and keeps the
+best checkpoint in `models/best/`.
 
 ## Quickstart (live Balatrobot)
 

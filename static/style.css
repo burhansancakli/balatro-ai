@@ -354,6 +354,15 @@ body {
 }
 .hh-dollars { font-size: 10px; color: #c9952a; }
 
+/* ─── Replay — Active Jokers ─────────────────────────────── */
+.rj-body { gap: 4px; }
+.rj-chip {
+  font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 5px;
+  background: linear-gradient(145deg, rgba(17,24,39,0.9), rgba(30,51,86,0.9));
+  border: 1px solid #c9952a; color: #f0c040; white-space: nowrap;
+  animation: pop .14s ease;
+}
+
 /* ─── Replay — Episode Sidebar ───────────────────────────── */
 #replay-picker { display: none !important; }
 

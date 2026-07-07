@@ -124,11 +124,55 @@ function buildEpRow(ep){
   return row;
 }
 
+// Reconstruct the joker set held at a given step by replaying
+// buy/sell events from the action log.
+function jokersAtStep(stepIdx){
+  if(!replayCur) return [];
+  const held = [];
+  const log = replayCur.action_log || [];
+  const last = Math.min(stepIdx, log.length - 1);
+  for(let i = 0; i <= last; i++){
+    const a = log[i];
+    if(a.type === 'buy' && a.card){
+      held.push(a.card);
+    } else if(a.type === 'sell' && a.card){
+      const idx = held.indexOf(a.card);
+      if(idx >= 0) held.splice(idx, 1);
+    }
+  }
+  return held;
+}
+
+function updateActiveJokers(){
+  const body = $('replay-jokers');
+  if(!body) return;
+  const held = jokersAtStep(replayStepIdx);
+  $('rj-count').textContent = held.length ? `${held.length} / 5` : '';
+  body.innerHTML = '';
+  if(!held.length){
+    body.appendChild(mk('span', 'empty', 'No jokers yet'));
+    return;
+  }
+  held.forEach(label => {
+    const chip = mk('span', 'rj-chip');
+    chip.textContent = label;
+    body.appendChild(chip);
+  });
+}
+
 let _epVirtualHandlersBound = false;
 function renderReplaySidebar(){
   let side = $('side');
   if(!side.querySelector('.ep-panel')){
     side.innerHTML = '';
+
+    const jpanel = mk('div', 'panel');
+    jpanel.innerHTML = `<div class="ph">🃏 Active Jokers <span class="ph-right" id="rj-count"></span></div>`;
+    const jbody = mk('div', 'pb rj-body');
+    jbody.id = 'replay-jokers';
+    jpanel.appendChild(jbody);
+    side.appendChild(jpanel);
+
     const panel = mk('div', 'panel ep-panel');
     panel.appendChild(mk('div', 'ph', '<span>📺 Episodes</span><span class="ph-right" id="ep-count" style="color:#9dd89d"></span>'));
 
@@ -374,7 +418,7 @@ function onReplayEpisodeLoaded(ep){
   renderReplayTimeline(ep,replayStepIdx);
   renderHandHistory(visibleHandHistory());
   renderReplayNav(ep.total_steps||0,replayStepIdx);
-  renderJokersAtEnd(ep.jokers_at_end||[]);
+  updateActiveJokers();
 }
 
 function onReplayCursor(c){
@@ -392,6 +436,7 @@ function onReplayCursor(c){
   renderHeaderForStep();
   renderHandHistory(visibleHandHistory());
   renderReplayNav(c.total_steps||replayCur.total_steps||0,replayStepIdx);
+  updateActiveJokers();
 }
 
 function renderHeaderForStep(){
@@ -479,20 +524,6 @@ function renderHandHistory(entries){
     scroll.appendChild(card);
   });
   sec.appendChild(scroll);
-}
-
-/* ── Jokers at end of episode ────────────────────────────── */
-function renderJokersAtEnd(jokers){
-  const jb=$('joker-body'); jb.innerHTML='';
-  $('joker-count').textContent=jokers.length?`${jokers.length}`:'';
-  if(!jokers.length){ jb.appendChild(mk('span','empty','No jokers')); return; }
-  jokers.forEach(j=>{
-    const d=mk('div','jcard');
-    d.innerHTML=`<span class="ji">🃏</span><span class="jn">${esc(j.label||j.key||'?')}</span>`;
-    jb.appendChild(d);
-  });
-  const cb=$('cons-body'); cb.innerHTML='';
-  cb.appendChild(mk('span','empty','—'));
 }
 
 /* ── Init ────────────────────────────────────────────────── */

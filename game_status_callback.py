@@ -20,7 +20,7 @@ class GameStatusCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         try:
-            seeds = self.training_env.get_attr("seed")
+            seeds = self.training_env.get_attr("label")
         except Exception:
             seeds = []
 
