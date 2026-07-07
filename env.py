@@ -21,6 +21,8 @@ from config import (
 from emulator.bridge import SimBackend
 from strategy import (
     Strategy,
+    NUM_STRATEGIES,
+    STRATEGY_NAMES,
     pick_best_action,
     parse_cards_from_gamestate,
     parse_jokers_from_gamestate,
@@ -40,19 +42,23 @@ class BalatroEnv(gym.Env):
 
     Observation space:
         Flat float32 vector of size OBS_SIZE.
-        Includes: ante, round, money, blind target, jokers, shop cards.
+        Includes: ante, round, money, blind target, jokers, shop cards,
+        and the currently active strategy (one-hot).
 
     Action space:
-        Discrete(MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1)
-        0     = skip (don't do anything)
-        1-4   = buy shop card at index 0-3
-        5-9   = sell owned joker at index 0-4
+        MultiDiscrete([MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1, NUM_STRATEGIES])
 
-    Strategy is fixed to MULT_BUILD.
-    The RL agent decides which shop joker to buy (or skip) and
-    which owned joker to sell.
-    After the shop decision, the calculator plays through hands
-    automatically until the next shop.
+        Component 0 — shop action:
+            0     = skip (don't do anything)
+            1-4   = buy shop card at index 0-3
+            5-9   = sell owned joker at index 0-4
+        Component 1 — strategy declaration:
+            0 = FLUSH_BUILD, 1 = PAIR_BUILD, 2 = MULT_BUILD
+
+    The RL agent decides which shop joker to buy (or skip), which
+    owned joker to sell, AND which strategy the automated hand
+    calculator should pursue until the next shop. The calculator
+    (strategy.py) then plays through hands using that strategy.
     """
 
     metadata = {"render_modes": []}
@@ -76,13 +82,17 @@ class BalatroEnv(gym.Env):
             shape=(OBS_SIZE,),
             dtype=np.float32,
         )
-        self.action_space = spaces.Discrete(MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1)  # 0=skip, 1-4=buy, 5-9=sell
+        # [shop action (0=skip, 1-4=buy, 5-9=sell), strategy declaration]
+        self.action_space = spaces.MultiDiscrete(
+            [MAX_SHOP_SLOTS + MAX_JOKER_SLOTS + 1, NUM_STRATEGIES]
+        )
 
         self._current_ante: int  = 0
         self._steps: int         = 0
         self._episode_reward: float = 0.0
         self._last_gamestate: Optional[dict] = None
         self._jokers_bought_episode: int = 0
+        self._active_strategy: Strategy = Strategy.MULT_BUILD
 
     # ─── Gymnasium interface ───────────────────────────────────
 
@@ -108,6 +118,7 @@ class BalatroEnv(gym.Env):
         self._episode_reward   = 0.0
         self._last_gamestate   = state
         self._jokers_bought_episode = 0
+        self._active_strategy  = Strategy.MULT_BUILD
 
         # If we landed in SHOP, skip to SELECTING_HAND so the first
         # step() gets a hand to play, not a buy decision on stale shop.
@@ -117,15 +128,20 @@ class BalatroEnv(gym.Env):
                 state = self._call("select")
             self._last_gamestate = state
 
-        return gamestate_to_observation(state), {
+        return gamestate_to_observation(state, self._active_strategy), {
             "state": state.get("state"),
             "ante": self._current_ante,
             "ante_reached": self._current_ante,
             "jokers_bought": self._jokers_bought_episode,
+            "strategy": int(self._active_strategy),
+            "strategy_name": STRATEGY_NAMES[self._active_strategy],
         }
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action) -> Tuple[np.ndarray, float, bool, bool, dict]:
+        action = np.asarray(action).ravel()
         assert self.action_space.contains(action), f"Invalid action: {action}"
+        shop_action = int(action[0])
+        self._active_strategy = Strategy(int(action[1]))
         self._steps += 1
 
         total_reward = 0.0
@@ -134,34 +150,36 @@ class BalatroEnv(gym.Env):
 
         # ── Phase 1: Handle shop if we're in one ─────────────
         if state.get("state") == "SHOP":
-            self._execute_shop_action(state, action)
+            self._execute_shop_action(state, shop_action)
             total_reward += self._outcome_reward(state)
-            
-            state = self._call("next_round")
+
+            # Refresh state — joker effects during buy/sell can mutate the
+            # engine phase, so we must not assume SHOP is still active.
+            state = self._call("gamestate")
+            if state.get("state") == "SHOP":
+                state = self._call("next_round")
             if state.get("state") == "BLIND_SELECT":
-                
                 state = self._call("select")
-               
             self._last_gamestate = state
 
             if state.get("state") == "GAME_OVER":
                 total_reward += self._outcome_reward(state)
                 self._episode_reward += total_reward
-                obs = gamestate_to_observation(state)
-                info = self._make_info(state, hand_logs, action)
+                obs = gamestate_to_observation(state, self._active_strategy)
+                info = self._make_info(state, hand_logs, shop_action)
                 return obs, total_reward, True, False, info
 
         # ── Phase 2: Play hands until next shop (or game over)
-        ante_reward, gamestate, done, hand_logs = self._play_ante(Strategy.MULT_BUILD)
+        ante_reward, gamestate, done, hand_logs = self._play_ante(self._active_strategy)
         total_reward += ante_reward
 
         self._episode_reward += total_reward
         self._last_gamestate  = gamestate
-        obs = gamestate_to_observation(gamestate)
+        obs = gamestate_to_observation(gamestate, self._active_strategy)
 
         terminated = done
         truncated  = self._steps >= MAX_STEPS
-        info = self._make_info(gamestate, hand_logs, action)
+        info = self._make_info(gamestate, hand_logs, shop_action)
 
         return obs, total_reward, terminated, truncated, info
 
@@ -185,6 +203,8 @@ class BalatroEnv(gym.Env):
         return {
             "action":         action,
             "action_label":   action_label,
+            "strategy":       int(self._active_strategy),
+            "strategy_name":  STRATEGY_NAMES[self._active_strategy],
             "ante":           gamestate.get("ante_num", 0),
             "ante_reached":   gamestate.get("ante_num", 0),
             "round":          gamestate.get("round_num", 0),

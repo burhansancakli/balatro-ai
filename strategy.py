@@ -15,6 +15,7 @@ Strategies:
 """
 
 from enum import IntEnum
+from functools import lru_cache
 from itertools import combinations
 from typing import List, Tuple, Optional
 
@@ -68,6 +69,140 @@ RANK_VALUES = {
 def _card_chip_value(rank: str) -> int:
     """Base chip contribution of a card when it scores."""
     return RANK_VALUES.get(rank, 0)
+
+
+# ─────────────────────────────────────────────────────────────
+# FAST CACHED SCORING CORE
+#
+# All hot-path scoring runs on hashable (rank, suit) tuples so
+# results can be memoized. Monte Carlo discard simulation draws
+# the same 5-card combos over and over — the cache turns those
+# repeat evaluations into dict lookups (~100-300x speedup on
+# the training hot path).
+# ─────────────────────────────────────────────────────────────
+
+def _cards_to_keys(cards: List[dict]) -> List[Tuple[str, str]]:
+    """Convert card dicts to hashable (rank, suit) tuples."""
+    return [(c.get("rank", ""), c.get("suit", "")) for c in cards]
+
+
+def _classify_keys(cards_key: Tuple[Tuple[str, str], ...]) -> Tuple[str, bool, dict]:
+    """Classify a played hand given (rank, suit) tuples.
+
+    Returns (hand_type, is_flush, rank_counts).
+    """
+    ranks = [r for r, _ in cards_key]
+    suits = [s for _, s in cards_key]
+    n = len(cards_key)
+    rank_vals = sorted((RANK_VALUES.get(r, 0) for r in ranks), reverse=True)
+
+    rank_counts: dict = {}
+    for r in ranks:
+        rank_counts[r] = rank_counts.get(r, 0) + 1
+    counts = sorted(rank_counts.values(), reverse=True)
+
+    is_flush    = n == 5 and len(set(suits)) == 1
+    is_straight = (n == 5 and len(set(rank_vals)) == 5 and
+                   rank_vals[0] - rank_vals[4] == 4)
+    if n == 5 and set(rank_vals) == {14, 2, 3, 4, 5}:
+        is_straight = True
+
+    if n == 5 and is_flush and counts == [5]:
+        hand_type = "flush_five"
+    elif n == 5 and is_flush and counts == [3, 2]:
+        hand_type = "flush_house"
+    elif n == 5 and counts == [5]:
+        hand_type = "five_of_a_kind"
+    elif is_flush and is_straight:
+        hand_type = "straight_flush"
+    elif n >= 4 and counts[0] == 4:
+        hand_type = "four_of_a_kind"
+    elif n == 5 and counts == [3, 2]:
+        hand_type = "full_house"
+    elif is_flush:
+        hand_type = "flush"
+    elif is_straight:
+        hand_type = "straight"
+    elif counts[0] == 3:
+        hand_type = "three_of_a_kind"
+    elif counts[:2] == [2, 2]:
+        hand_type = "two_pair"
+    elif counts[0] == 2:
+        hand_type = "pair"
+    else:
+        hand_type = "high_card"
+
+    return hand_type, is_flush, rank_counts
+
+
+_FACE_RANKS = frozenset({"J", "Q", "K"})
+
+
+def _apply_joker_keys(
+    label: str,
+    cards_key: Tuple[Tuple[str, str], ...],
+    hand_type: str,
+    is_flush: bool,
+    rank_counts: dict,
+    chips: int,
+    mult: int,
+    n_jokers: int,
+) -> Tuple[int, int]:
+    """Apply one whitelisted joker effect (tuple-card fast path)."""
+    pair_count   = sum(1 for count in rank_counts.values() if count >= 2)
+    has_pair     = pair_count >= 1
+    has_three    = any(count >= 3 for count in rank_counts.values())
+    has_two_pair = pair_count >= 2
+
+    if label == "Droll Joker" and is_flush:
+        mult += 10
+    elif label == "Crafty Joker" and is_flush:
+        chips += 80
+    elif label == "Lusty Joker":
+        mult += 3 * sum(1 for _, s in cards_key if s == "H")
+    elif label == "Greedy Joker":
+        mult += 3 * sum(1 for _, s in cards_key if s == "D")
+    elif label == "Jolly Joker" and has_pair:
+        mult += 8
+    elif label == "Zany Joker" and has_three:
+        mult += 12
+    elif label == "Mad Joker" and has_two_pair:
+        mult += 10
+    elif label == "Sly Joker" and has_pair:
+        chips += 50
+    elif label == "Wily Joker" and has_three:
+        chips += 100
+    elif label == "Joker":
+        mult += 4
+    elif label == "Abstract Joker":
+        mult += 3 * n_jokers
+    elif label == "Half Joker" and len(cards_key) <= 3:
+        mult += 20
+    elif label == "Scary Face":
+        chips += 30 * sum(1 for r, _ in cards_key if r in _FACE_RANKS)
+
+    return chips, mult
+
+
+@lru_cache(maxsize=262_144)
+def _score_keys(
+    cards_key: Tuple[Tuple[str, str], ...],
+    jokers_key: Tuple[str, ...],
+) -> Tuple[str, int]:
+    """Memoized hand scorer. cards_key MUST be sorted for cache hits
+    across card orderings (scoring is order-independent)."""
+    hand_type, is_flush, rank_counts = _classify_keys(cards_key)
+    chips, mult = HAND_SCORES[hand_type]
+    chips += sum(RANK_VALUES.get(r, 0) for r, _ in cards_key)
+
+    n_jokers = len(jokers_key)
+    for label in jokers_key:
+        chips, mult = _apply_joker_keys(
+            label, cards_key, hand_type, is_flush, rank_counts,
+            chips, mult, n_jokers,
+        )
+
+    return hand_type, chips * mult
 
 
 def _classify_hand(cards: List[dict]) -> Tuple[str, dict]:
@@ -215,6 +350,38 @@ STRATEGY_PREFERRED_HANDS = {
 }
 
 
+def _pick_best_play_keys(
+    keys: List[Tuple[str, str]],
+    strategy: Strategy,
+    jokers_key: Tuple[str, ...],
+    play_sizes: List[int],
+) -> Tuple[List[int], str, int]:
+    """Core best-play search over hashable card keys (cache-backed)."""
+    n = len(keys)
+    best_indices  = list(range(min(play_sizes[-1], n)))
+    best_score    = -1
+    best_hand     = "high_card"
+    prefs         = STRATEGY_PREFERRED_HANDS[strategy]
+    is_mult       = strategy == Strategy.MULT_BUILD
+
+    for size in play_sizes:
+        for combo in combinations(range(n), size):
+            combo_key = tuple(sorted(keys[i] for i in combo))
+            hand_type, base_score = _score_keys(combo_key, jokers_key)
+
+            if is_mult:
+                weighted_score = base_score
+            else:
+                weighted_score = prefs.get(hand_type, 1) * 10000 + base_score
+
+            if weighted_score > best_score:
+                best_score   = weighted_score
+                best_indices = list(combo)
+                best_hand    = hand_type
+
+    return best_indices, best_hand, best_score
+
+
 def pick_best_play(
     hand_cards: List[dict],
     strategy: Strategy,
@@ -245,30 +412,9 @@ def pick_best_play(
     if "Half Joker" in joker_labels:
         play_sizes = list(range(1, max_play + 1))
 
-    best_indices  = list(range(max_play))
-    best_score    = -1
-    best_hand     = "high_card"
-    prefs         = STRATEGY_PREFERRED_HANDS[strategy]
-
-    for size in play_sizes:
-        for combo in combinations(range(n), size):
-            cards = [hand_cards[i] for i in combo]
-            hand_type, base_score = _score_hand(cards, joker_labels)
-            preference = prefs.get(hand_type, 1)
-
-            if strategy == Strategy.MULT_BUILD:
-                # Pure score maximizer
-                weighted_score = base_score
-            else:
-                # Blend: heavily weight strategy preference, lightly weight score
-                weighted_score = preference * 10000 + base_score
-
-            if weighted_score > best_score:
-                best_score   = weighted_score
-                best_indices = list(combo)
-                best_hand    = hand_type
-
-    return best_indices, best_hand, best_score
+    return _pick_best_play_keys(
+        _cards_to_keys(hand_cards), strategy, tuple(joker_labels), play_sizes
+    )
 
 
 def parse_cards_from_gamestate(gamestate: dict) -> List[dict]:
@@ -366,9 +512,16 @@ def get_discard_candidates(
         unused_sorted = sorted(unused_indices, key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
         candidates.append(unused_sorted[:5])
 
-    # 2. Flush Hunt: For each suit, discard all cards in hand that do not belong to it
-    suits = ["C", "D", "H", "S"]
-    for s in suits:
+    # 2. Flush Hunt: only chase suits already holding >= 3 cards — hunting
+    #    a suit with fewer is nearly always EV-negative and just burns
+    #    Monte Carlo budget.
+    suit_counts: dict = {}
+    for c in hand_cards:
+        s = c.get("suit", "")
+        suit_counts[s] = suit_counts.get(s, 0) + 1
+    for s, cnt in sorted(suit_counts.items(), key=lambda kv: -kv[1]):
+        if cnt < 3:
+            break
         non_suit_indices = [i for i in range(n) if hand_cards[i].get("suit") != s]
         if 1 <= len(non_suit_indices) <= 5:
             candidates.append(non_suit_indices)
@@ -388,11 +541,10 @@ def get_discard_candidates(
         singleton_sorted = sorted(singleton_indices, key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
         candidates.append(singleton_sorted[:5])
 
-    # 4. Discard the 3, 4, or 5 lowest-ranking cards in hand
+    # 4. Discard the 4 lowest-ranking cards in hand
     hand_sorted_indices = sorted(range(n), key=lambda i: RANK_VALUES.get(hand_cards[i].get("rank", ""), 0))
-    for k in [3, 4, 5]:
-        if k <= n:
-            candidates.append(hand_sorted_indices[:k])
+    if 4 <= n:
+        candidates.append(hand_sorted_indices[:4])
 
     # Deduplicate candidates to avoid redundant simulations
     unique_candidates = []
@@ -403,7 +555,9 @@ def get_discard_candidates(
             seen.add(cand_tuple)
             unique_candidates.append(list(cand_tuple))
 
-    return unique_candidates
+    # Cap the Monte Carlo budget — candidates are ordered by heuristic
+    # quality (unused-cards first, then flush hunts, singletons, low cards)
+    return unique_candidates[:4]
 
 
 def evaluate_discard(
@@ -412,23 +566,33 @@ def evaluate_discard(
     remaining_deck: List[dict],
     strategy: Strategy,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 50,
+    num_simulations: int = 12,
 ) -> float:
     """
     Simulates drawing cards to evaluate the EV of discarding a subset of cards.
+
+    Simulations use the fast path: 5-card plays only (no Half Joker
+    size exploration) over memoized scoring — the final play decision
+    still uses the full search.
     """
     import random
     k = len(discard_indices)
     if k == 0 or len(remaining_deck) < k:
         return -1.0
 
-    kept_cards = [hand_cards[i] for i in range(len(hand_cards)) if i not in discard_indices]
+    discard_set = set(discard_indices)
+    kept_keys = [
+        (c.get("rank", ""), c.get("suit", ""))
+        for i, c in enumerate(hand_cards) if i not in discard_set
+    ]
+    deck_keys = [(c.get("rank", ""), c.get("suit", "")) for c in remaining_deck]
+    jokers_key = tuple(joker_labels or [])
     total_score = 0.0
 
     for _ in range(num_simulations):
-        drawn = random.sample(remaining_deck, k)
-        simulated_hand = kept_cards + drawn
-        _, _, score = pick_best_play(simulated_hand, strategy, joker_labels=joker_labels)
+        sim_keys = kept_keys + random.sample(deck_keys, k)
+        play_size = min(5, len(sim_keys))
+        _, _, score = _pick_best_play_keys(sim_keys, strategy, jokers_key, [play_size])
         total_score += score
 
     return total_score / num_simulations
@@ -439,7 +603,7 @@ def pick_best_action(
     strategy: Strategy,
     discards_left: int,
     joker_labels: Optional[List[str]] = None,
-    num_simulations: int = 50,
+    num_simulations: int = 12,
 ) -> Tuple[str, List[int], Optional[str]]:
     """
     Decides whether to play or discard using Monte Carlo evaluation of discard candidates.
@@ -451,6 +615,12 @@ def pick_best_action(
     play_indices, play_hand, play_score = pick_best_play(hand_cards, strategy, joker_labels=joker_labels)
 
     if discards_left <= 0:
+        return "play", play_indices, play_hand
+
+    # Early exit: the hand already achieves a top-tier result for this
+    # strategy — discarding can only risk it, so skip the Monte Carlo
+    # evaluation entirely.
+    if STRATEGY_PREFERRED_HANDS[strategy].get(play_hand, 1) >= 700:
         return "play", play_indices, play_hand
 
     remaining_deck = get_remaining_deck(hand_cards)

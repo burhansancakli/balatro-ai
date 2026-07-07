@@ -27,6 +27,7 @@ from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
 
 from env import BalatroEnv
+from episode_recorder import EpisodeRecorderWrapper
 from config import (
     DECK, STAKE, SAVE_DIR, MODEL_DIR, LOG_DIR,
     TOTAL_STEPS, N_STEPS, BATCH_SIZE, N_EPOCHS,
@@ -42,12 +43,14 @@ from run_checkpoint_callback import RunCheckpointCallback
 # ENV FACTORY
 # ─────────────────────────────────────────────────────────────
 
-def make_env(port: int, seed: str, rank: int, backend=None):
+def make_env(port: int, seed: str, rank: int, backend=None, record_dir: str = None):
     save_path = os.path.join(SAVE_DIR, f"fresh_{seed}.jkr")
 
     def _init():
         env = BalatroEnv(port=port, save_path=save_path, seed=seed, backend=backend)
         env.reset(seed=rank)
+        if record_dir:
+            env = EpisodeRecorderWrapper(env, record_dir=record_dir, rank=rank)
         return env
 
     set_random_seed(rank)
@@ -62,26 +65,37 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None, use
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
+    session_id = time.strftime("%Y%m%d_%H%M%S")
+    record_dir = os.path.join(LOG_DIR, "episodes", session_id)
+    print(f"\nRecording episodes to: {record_dir}")
+
     print(f"\nBuilding {len(ports)} parallel environments...")
     env_fns: Any = [
-        make_env(port, seed, rank, backend=backends[rank] if backends else None)
+        make_env(port, seed, rank, backend=backends[rank] if backends else None, record_dir=record_dir)
         for rank, (port, seed) in enumerate(zip(ports, seeds))
     ]
 
-    # DummyVecEnv is much faster with emulator — no IPC overhead needed
-    # since SimBackend runs in-process. SubprocVecEnv is only needed for
-    # real Balatrobot instances where each env talks to a separate process.
-    if use_emulator:
+    # Each env step is compute-heavy (plays a whole ante with Monte Carlo
+    # discard evaluation), so with multiple envs SubprocVecEnv's true
+    # process parallelism beats DummyVecEnv's sequential stepping even in
+    # emulator mode — the IPC overhead is negligible next to the step cost.
+    if use_emulator and len(env_fns) == 1:
         vec_env = DummyVecEnv(env_fns)
-        print(f"  Using DummyVecEnv (emulator mode — no IPC overhead)")
+        print(f"  Using DummyVecEnv (single emulator env — no IPC needed)")
     else:
         vec_env = SubprocVecEnv(env_fns)
-        print(f"  Using SubprocVecEnv (live Balatrobot mode)")
+        print(f"  Using SubprocVecEnv ({len(env_fns)} parallel processes)")
     vec_env = VecMonitor(vec_env, LOG_DIR)
     print(f" Environments ready")
 
     if use_emulator:
-        eval_env = DummyVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
+        # The eval env MUST NOT share a SimBackend with a training env —
+        # SimBackend is stateful, so a shared instance lets eval episodes
+        # clobber the training env's game state mid-rollout (crashes with
+        # IllegalActionError phase mismatches at every EVAL_FREQ boundary).
+        from emulator.bridge import SimBackend
+        eval_backend = SimBackend(simplified=True)
+        eval_env = DummyVecEnv([make_env(ports[0], seeds[0], 99, backend=eval_backend)])
     else:
         eval_env = SubprocVecEnv([make_env(ports[0], seeds[0], 99, backend=backends[0] if backends else None)])
     eval_env = VecMonitor(eval_env)
