@@ -4,111 +4,130 @@ A reinforcement-learning training stack for Balatro that combines a Gymnasium en
 
 ## What the project does
 
-- Wraps Balatro as a Gymnasium environment with a discrete action space.
-- Uses a deterministic calculator for hand selection so the RL policy can focus on shop decisions.
-- Supports training with Stable-Baselines3 PPO in parallel environments.
-- Includes optional emulator mode for headless runs without launching Balatrobot.
-- Provides callbacks for game status tracking, shop action logging, and checkpointing.
-
-## Current architecture
-
-1. The environment loads a fresh save and polls the game state from the backend.
-2. The RL agent selects an action such as skipping, buying a shop card, or selling a joker.
-3. The environment executes the chosen action and then plays the remainder of the ante with the deterministic hand calculator.
-4. Training runs through vectorized environments and saves checkpoints, evaluation logs, and TensorBoard output.
-
-## Repository structure
-
-```text
-.
-├── config.py                # Shared training and environment settings
-├── env.py                   # Gymnasium environment wrapper
-├── instance_manager.py      # Balatrobot process/port management
-├── observations.py          # Observation vector construction
-├── strategy.py              # Deterministic hand-planning logic
-├── train.py                 # PPO training entrypoint
-├── emulator/                # In-process emulator backend
-├── tests/                   # Unit tests for strategy, rewards, and observations
-├── balatro_saves/           # Seeded save files used by training
-├── models/                  # Saved PPO models and checkpoints
-├── logs/                    # TensorBoard and training logs
-└── runs/                    # Run metadata and experiment output
+```
+┌──────────────────────────────────────────────────────┐
+│              HIGH-LEVEL AGENT (RL / PPO)             │
+│                                                      │
+│  Input : observation vector (25 values)              │
+│          ante, round, money, blind target,           │
+│          jokers, shop, active strategy (one-hot)     │
+│  Output: MultiDiscrete([10, 3])                      │
+│          [0] shop action: 0=skip 1-4=buy 5-9=sell    │
+│          [1] strategy:    0=FLUSH 1=PAIR 2=MULT      │
+│  Frequency: once per shop visit                      │
+└──────────────────────┬───────────────────────────────┘
+                       │ shop action + strategy label
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│           LOW-LEVEL EXECUTOR (Calculator)            │
+│                                                      │
+│  Input : hand cards + strategy label + jokers        │
+│  Output: best play/discard (deterministic math)      │
+│  Method: brute-force combinations scored by          │
+│          Chips×Mult + strategy preference,           │
+│          Monte Carlo discard EV                      │
+│  Frequency: every hand played                        │
+└──────────────────────┬───────────────────────────────┘
+                       │ card indices
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│      BACKEND (SimBackend emulator / Balatrobot)      │
+│  --emulator: in-process jackdaw engine (fast)        │
+│  live: N parallel Balatrobot instances               │
+└──────────────────────────────────────────────────────┘
 ```
 
-## Requirements
+The agent declares a strategy at every shop decision. The declared
+strategy is one-hot encoded into the observation, steers the hand
+calculator until the next shop, and earns a coherence reward when the
+played hand types match it — so the agent learns to align purchases
+(e.g. flush jokers) with play style (flush hunting).
 
-- Python 3.12+
-- The project is configured via [pyproject.toml](pyproject.toml)
+## Reward Structure
 
-Install dependencies with:
+| Event | Reward |
+|---|---|
+| Each hand played (strategy coherence) | +0.0 to +0.1 |
+| Blind progress shaping | +0.0 to +0.02 |
+| Round survived | +0.05 |
+| Selling a joker | -0.05 |
+| Ante N beaten | +0.2 × (N−1), up to +2.0 for a win |
+| Game over at ante 1 | -0.5 |
 
-```bash
-pip install -e .
+## File Structure
+
+```
+balatro-ai/
+  strategy.py            — Strategy enum + calculator (low-level executor)
+  observations.py        — Gamestate → numpy obs vector (incl. strategy one-hot)
+  env.py                 — BalatroEnv Gymnasium wrapper
+  train.py               — PPO training (emulator or live Balatrobot)
+  episode_recorder.py    — gym.Wrapper writing episodes to JSONL per run
+  replay_server.py       — standalone replay dashboard (HTTP + WebSocket)
+  static/                — replay UI (index.html, app.js, style.css)
+  emulator/              — in-process jackdaw engine + Balatrobot bridge
 ```
 
-## Quick start
-
-### 1. Training examples
+## Quickstart (emulator — recommended)
 
 ```bash
-python train.py --headless
-python train.py --instances 4 --emulator
-python train.py --instances 4 --emulator --resume ./models/PPO_77_4000_steps.zip
-```
+pip install stable-baselines3 gymnasium numpy torch websockets
 
-### 2. Emulator mode (no Balatrobot required)
+# Train with the in-process emulator (4 parallel envs by default)
+python train.py --emulator
 
-```bash
-emulator run --mode play
-emulator run --mode play --host 127.0.0.1 --port 12346
-emulator run --mode watch
-emulator run --mode watch --agent smart
-```
+# Custom length / device
+python train.py --emulator -n 8 --steps 500000
+python train.py --emulator --device cuda
 
-### 3. Live Balatrobot mode
-
-```bash
-python train.py
-```
-
-### 4. Custom instance count or seeds
-
-```bash
-python train.py -n 4
-python train.py --seeds TRAIN01 TRAIN02 TRAIN03
-```
-
-## Useful training options
-
-- `--emulator`: use the built-in emulator backend
-- `--resume path/to/model.zip`: continue training from a saved checkpoint
-- `--delay 0.5`: pause briefly between environment steps for visualization
-- `-n 4`: run multiple parallel environments
-
-## Monitoring
-
-TensorBoard logs are written under the `logs/` directory:
-
-```bash
+# Monitor training
 tensorboard --logdir ./logs
 ```
 
-## Testing
+Training uses per-episode random game seeds (emulator mode), so the
+agent generalizes across decks/shops instead of memorizing fixed runs.
+Learning rate and clip range decay linearly; the entropy bonus anneals
+from 0.05 to 0.005 so the agent explores strategies early and commits
+late. Evaluation runs on unseen seeds every 10k steps and keeps the
+best checkpoint in `models/best/`.
 
-Run the unit test suite with:
+## Quickstart (live Balatrobot)
 
 ```bash
-pytest
+# Instances are started automatically:
+python train.py -n 4 --setup-only   # create save files (once)
+python train.py -n 4                # train
 ```
+
+## Replay System
+
+Every training run records completed episodes to
+`logs/episodes/<timestamp>/episodes_<rank>.jsonl` (one JSON line per
+episode: actions, rewards, per-hand action log with declared strategy,
+final jokers).
+
+```bash
+# Browse a run in the browser
+python replay_server.py --log-dir logs/episodes/<timestamp>
+# → http://127.0.0.1:8765/?mode=replay
+```
+
+The dashboard shows an episode list (sort by reward / ante / steps,
+filter won/lost), a step-by-step timeline with strategy badges,
+cumulative hand history, and keyboard navigation (←/→).
 
 To exclude benchmark and live-only tests:
 
 ```bash
 pytest -m "not benchmark and not live"
 ```
+The flat PPO baseline uses the same env and obs space but:
+- Acts every hand (not every shop)
+- Chooses card indices directly (no calculator)
+- No strategy conditioning
 
 ## Notes
 
-- The training configuration is centralized in [config.py](config.py).
-- The project is designed for research and experimentation; expect to adjust hyperparameters and environment settings for your hardware and target behavior.
-- On macOS, Balatrobot may occasionally trigger crash-report dialogs; these are external to the RL stack itself.
+Mac users: if an "Application closed unexpectedly" popup shows up
+repeatedly, disable it with
+`defaults write com.apple.CrashReporter DialogType none`.

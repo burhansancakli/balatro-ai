@@ -21,15 +21,19 @@ import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.utils import set_random_seed
 from game_status_callback import GameStatusCallback
 
 from env import BalatroEnv
+from episode_recorder import EpisodeRecorderWrapper
 from config import (
     DECK, STAKE, SAVE_DIR, MODEL_DIR, LOG_DIR,
     TOTAL_STEPS, N_STEPS, BATCH_SIZE, N_EPOCHS,
-    LEARNING_RATE, GAMMA, EVAL_FREQ, CHECKPOINT_FREQ,
+    LEARNING_RATE, LR_FINAL_FRACTION, GAMMA,
+    CLIP_RANGE_START, CLIP_RANGE_FINAL,
+    ENT_COEF_START, ENT_COEF_FINAL, NET_ARCH,
+    EVAL_FREQ, N_EVAL_EPISODES, CHECKPOINT_FREQ,
 )
 from emulator.bridge.backend import SimBackend
 from instance_manager import BalatrobotManager
@@ -39,10 +43,45 @@ from run_checkpoint_callback import RunCheckpointCallback
 
 
 # ─────────────────────────────────────────────────────────────
+# SCHEDULES & CALLBACKS
+# ─────────────────────────────────────────────────────────────
+
+def linear_schedule(start: float, end: float):
+    """SB3 schedule: interpolates from start (progress=1) to end (progress=0)."""
+    def fn(progress_remaining: float) -> float:
+        return end + progress_remaining * (start - end)
+    return fn
+
+
+class EntropyAnnealCallback(BaseCallback):
+    """Linearly anneal the entropy bonus over training.
+
+    High entropy early makes the agent try all strategies and shop
+    actions; low entropy late lets it commit to what works. SB3 has
+    no built-in ent_coef schedule, so this sets model.ent_coef before
+    each update.
+    """
+
+    def __init__(self, start: float, end: float, total_steps: int):
+        super().__init__(verbose=0)
+        self._start = start
+        self._end = end
+        self._total = max(total_steps, 1)
+
+    def _on_rollout_end(self) -> None:
+        progress_remaining = max(0.0, 1.0 - self.num_timesteps / self._total)
+        self.model.ent_coef = self._end + progress_remaining * (self._start - self._end)
+        self.logger.record("train/ent_coef_current", self.model.ent_coef)
+
+    def _on_step(self) -> bool:
+        return True
+
+
+# ─────────────────────────────────────────────────────────────
 # ENV FACTORY
 # ─────────────────────────────────────────────────────────────
 
-def make_env(port: int, seeds: list, rank: int, backend=None, delay: float = 0.0):
+def make_env(port: int, seeds: list, rank: int, backend=None, delay: float = 0.0, record_dir: str = None):
     """Create env factory. Each env cycles through `seeds` on every reset()."""
     initial_seed = seeds[rank % len(seeds)]
     save_path = os.path.join(SAVE_DIR, f"fresh_{initial_seed}.jkr")
@@ -50,6 +89,8 @@ def make_env(port: int, seeds: list, rank: int, backend=None, delay: float = 0.0
     def _init():
         env = BalatroEnv(port=port, save_path=save_path, seed=initial_seed, seeds=seeds, backend=backend, delay=delay)
         env.reset(seed=rank)
+        if record_dir:
+            env = EpisodeRecorderWrapper(env, record_dir=record_dir, rank=rank)
         return env
 
     set_random_seed(rank)
@@ -60,13 +101,17 @@ def make_env(port: int, seeds: list, rank: int, backend=None, delay: float = 0.0
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(backends: list, ports: list, seeds: list, resume_path: str = None, use_emulator: bool = False, delay: float = 0.0):
+def train(backends: list, ports: list, seeds: list, resume_path: str = None, use_emulator: bool = False, total_steps: int = TOTAL_STEPS, delay: float = 0.0):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
+    session_id = time.strftime("%Y%m%d_%H%M%S")
+    record_dir = os.path.join(LOG_DIR, "episodes", session_id)
+    print(f"\nRecording episodes to: {record_dir}")
+
     print(f"\nBuilding {len(ports)} parallel environments...")
     env_fns: Any = [
-        make_env(port, seeds, rank, backend=backends[rank] if backends else None, delay=delay)
+        make_env(port, seeds, rank, backend=backends[rank] if backends else None, delay=delay, record_dir=record_dir)
         for rank, port in enumerate(ports)
     ]
 
@@ -80,6 +125,9 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None, use
     eval_env = SubprocVecEnv([make_env(ports[0], seeds, 0, backend=eval_backend, delay=delay)])
     eval_env = VecMonitor(eval_env)
 
+    # For a small MLP policy, CPU beats GPU: per-update tensors are tiny,
+    # so GPU transfer latency outweighs any compute win (SB3 docs
+    # recommend CPU for MlpPolicy PPO). Use --device cuda to override.
     if torch.cuda.is_available():
         device = "cuda"
     elif torch.backends.mps.is_available():
@@ -105,41 +153,43 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None, use
             n_steps         = N_STEPS,
             batch_size      = BATCH_SIZE,
             n_epochs        = N_EPOCHS,
-            learning_rate   = LEARNING_RATE,
+            learning_rate   = linear_schedule(LEARNING_RATE, LEARNING_RATE * LR_FINAL_FRACTION),
             gamma           = GAMMA,
             gae_lambda      = 0.95,
-            clip_range      = 0.2,
-            ent_coef        = 0.05,
+            clip_range      = linear_schedule(CLIP_RANGE_START, CLIP_RANGE_FINAL),
+            ent_coef        = ENT_COEF_START,
             verbose         = 1,
             tensorboard_log = LOG_DIR,
-            policy_kwargs   = dict(net_arch=[64, 64]),
+            policy_kwargs   = dict(net_arch=NET_ARCH),
             device          = device,
         )
 
     callbacks = [
         RunCheckpointCallback(
-            save_freq   = CHECKPOINT_FREQ // len(ports),
+            save_freq   = max(1, CHECKPOINT_FREQ // len(ports)),
             save_path   = MODEL_DIR,
         ),
         EvalCallback(
             eval_env,
-            eval_freq            = EVAL_FREQ // len(ports),
+            eval_freq            = max(1, EVAL_FREQ // len(ports)),
+            n_eval_episodes      = N_EVAL_EPISODES,
             best_model_save_path = os.path.join(MODEL_DIR, "best"),
             log_path             = LOG_DIR,
             deterministic        = True,
             render               = False,
         ),
+        EntropyAnnealCallback(ENT_COEF_START, ENT_COEF_FINAL, total_steps),
         ShopActionLogCallback(),
         ResearchCallback(),
-        GameStatusCallback(),
+        GameStatusCallback(total_steps=total_steps),
     ]
 
-    print(f"\nStarting PPO training — {TOTAL_STEPS:,} steps")
+    print(f"\nStarting PPO training — {total_steps:,} steps")
     print(f"Monitor: tensorboard --logdir {LOG_DIR}\n")
     t_start = time.time()
 
     model.learn(
-        total_timesteps = TOTAL_STEPS,
+        total_timesteps = total_steps,
         callback        = callbacks,
         log_interval    = 1,
         progress_bar    = False,
@@ -164,8 +214,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--setup-only", action="store_true",
                         help="Only start instances and create save files")
-    parser.add_argument("-n", "--instances", type=int, default=1,
-                        help="Number of parallel Balatrobot instances (default: 1)")
+    parser.add_argument("-n", "--instances", type=int, default=4,
+                        help="Number of parallel environments (default: 4)")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to a saved model .zip to resume training from")
     parser.add_argument("--emulator", action="store_true",

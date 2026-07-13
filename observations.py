@@ -11,13 +11,15 @@ Observation layout:
   [3]     blind_target        normalized 0-1  (clipped at 100_000)
   [4 - 4+MAX_JOKER_SLOTS*2-1]  5 joker slots × (joker_idx, active)
   [14 - 14+MAX_SHOP_SLOTS*2-1]  4 shop slots × (joker_idx, cost)
+  [22 - 22+NUM_STRATEGIES-1]   active strategy one-hot
 
-OBS_SIZE is computed automatically from NUM_JOKERS.
+OBS_SIZE is computed automatically from NUM_JOKERS and NUM_STRATEGIES.
 Adding jokers in jokers.py automatically expands the vector.
 """
 
 import numpy as np
 from jokers import JOKER_INDEX, NUM_JOKERS
+from strategy import NUM_STRATEGIES
 
 # ─────────────────────────────────────────────────────────────
 # CONSTANTS
@@ -43,7 +45,8 @@ MAX_SHOP_COST   = 10.0  # jokers rarely exceed $8
 
 # Computed automatically — import this in env.py
 # 4 scalars + 5 joker slots × 2 values + 4 shop slots × 2 values
-OBS_SIZE = 4 + (MAX_JOKER_SLOTS * 2) + (MAX_SHOP_SLOTS * 2)  # = 22
+#   + active strategy one-hot
+OBS_SIZE = 4 + (MAX_JOKER_SLOTS * 2) + (MAX_SHOP_SLOTS * 2) + NUM_STRATEGIES  # = 25
 
 
 # ─────────────────────────────────────────────────────────────
@@ -86,11 +89,15 @@ def card_to_string(card: dict) -> str:
 # MAIN OBSERVATION FUNCTION
 # ─────────────────────────────────────────────────────────────
 
-def gamestate_to_observation(raw_state: dict) -> np.ndarray:
+def gamestate_to_observation(raw_state: dict, active_strategy: int = None) -> np.ndarray:
     """
     Convert raw Balatrobot gamestate into a flat float32 numpy vector.
     Shape: (OBS_SIZE,). All values normalized to approximately [0, 1].
     Empty slots encoded as -1.0.
+
+    active_strategy: the strategy the agent currently has declared
+    (Strategy enum value / int), one-hot encoded at the tail of the
+    vector. None leaves the one-hot all zeros.
     """
     obs = np.zeros(OBS_SIZE, dtype=np.float32)
 
@@ -141,6 +148,11 @@ def gamestate_to_observation(raw_state: dict) -> np.ndarray:
             obs[base]     = -1.0
             obs[base + 1] = 0.0
 
+    # ── Active strategy one-hot [22-24] ──────────────────────
+    strat_base = shop_base + MAX_SHOP_SLOTS * 2  # = 22
+    if active_strategy is not None and 0 <= int(active_strategy) < NUM_STRATEGIES:
+        obs[strat_base + int(active_strategy)] = 1.0
+
     return obs
 
 
@@ -170,6 +182,7 @@ def pretty_print_observation(obs: np.ndarray) -> None:
         ["ante", "round", "money", "blind_target"]
         + [f"joker{i//2}_{'idx' if i%2==0 else 'active'}" for i in range(MAX_JOKER_SLOTS * 2)]
         + [f"shop{i//2}_{'idx' if i%2==0 else 'cost'}" for i in range(MAX_SHOP_SLOTS * 2)]
+        + [f"strategy_{i}" for i in range(NUM_STRATEGIES)]
     )
     print(f"Observation vector (size={OBS_SIZE}, jokers={NUM_JOKERS}):")
     for i, (label, val) in enumerate(zip(labels, obs)):
