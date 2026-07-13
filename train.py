@@ -184,9 +184,9 @@ if __name__ == "__main__":
         SEEDS = args.seeds  # full list — each env cycles through all of them
         print(f"Using {len(SEEDS)} seeds from command line")
     else:
-        SEEDS = [f"TRAIN{i:02d}" for i in range(2, args.instances + 2)]
+        SEEDS = [f"TRAIN{i}" for i in range(0, 999999)]
 
-    backends = BalatrobotManager(PORTS, emulator=args.emulator, simplified=args.emulator).start()
+    backends = BalatrobotManager(PORTS, emulator=args.emulator, simplified=True).start()
 
     print(f"\n All {len(PORTS)} instances ready\n")
     if not args.emulator:
