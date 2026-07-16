@@ -42,9 +42,11 @@ class BalatrobotManager:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, sig, frame):
-        print("\nShutdown signal received, killing Balatrobot instances...")
-        self.kill_all()
-        exit(0)
+        # atexit already calls kill_all() — just re-raise so the real
+        # traceback (and the actual error that triggered the signal)
+        # is visible instead of a recursive SystemExit.
+        signal.signal(sig, signal.SIG_DFL)
+        os.kill(os.getpid(), sig)
 
     def start_instance(self, port: int) -> bool:
         if port in self.processes:

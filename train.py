@@ -101,7 +101,7 @@ def make_env(port: int, seeds: list, rank: int, backend=None, delay: float = 0.0
 # TRAINING
 # ─────────────────────────────────────────────────────────────
 
-def train(backends: list, ports: list, seeds: list, resume_path: str = None, use_emulator: bool = False, total_steps: int = TOTAL_STEPS, delay: float = 0.0):
+def train(backends: list, ports: list, seeds: list, resume_path: str = None, use_emulator: bool = False, simplified: bool = False, total_steps: int = TOTAL_STEPS, delay: float = 0.0):
     os.makedirs(MODEL_DIR, exist_ok=True)
     os.makedirs(LOG_DIR,   exist_ok=True)
 
@@ -121,7 +121,7 @@ def train(backends: list, ports: list, seeds: list, resume_path: str = None, use
     vec_env = SubprocVecEnv(env_fns)
     vec_env = VecMonitor(vec_env, LOG_DIR)
     print(f" Environments ready")
-    eval_backend = SimBackend(simplified=True) if use_emulator else backends[0]
+    eval_backend = SimBackend(simplified=simplified) if use_emulator else backends[0]
     eval_env = SubprocVecEnv([make_env(ports[0], seeds, 0, backend=eval_backend, delay=delay)])
     eval_env = VecMonitor(eval_env)
 
@@ -224,6 +224,8 @@ if __name__ == "__main__":
                         help="Custom seed names (e.g. --seeds SEED1 SEED2 SEED3)")
     parser.add_argument("--delay", type=float, default=0.0,
                         help="Seconds to sleep after each step (e.g. 0.5 to watch the game)")
+    parser.add_argument("--full-environment", action="store_true",
+                        help="Use full environment (not simplified) for emulator (default: simplified)")
     
     args, unknown_args = parser.parse_known_args()
     from instance_manager import BALATROBOT_FLAGS
@@ -236,7 +238,7 @@ if __name__ == "__main__":
     else:
         SEEDS = [f"TRAIN{i}" for i in range(0, 999999)]
 
-    backends = BalatrobotManager(PORTS, emulator=args.emulator, simplified=True).start()
+    backends = BalatrobotManager(PORTS, emulator=args.emulator, simplified=not args.full_environment).start()
 
     print(f"\n All {len(PORTS)} instances ready\n")
     if not args.emulator:
@@ -246,4 +248,4 @@ if __name__ == "__main__":
         print("Setup complete. Run 'python train.py' to train.")
         exit(0)
 
-    train(backends, PORTS, SEEDS, resume_path=args.resume, use_emulator=args.emulator, delay=args.delay)
+    train(backends, PORTS, SEEDS, resume_path=args.resume, use_emulator=args.emulator, simplified=not args.full_environment, delay=args.delay)
