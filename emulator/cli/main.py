@@ -255,16 +255,22 @@ def _run_command(args: argparse.Namespace) -> None:
                 sys.exit(1)
             url = f"http://127.0.0.1:{args.web_port}/?mode=play"
             mode_label = "LIVE" if live_mode else "SIM"
-            print(f"  Seed: {seed}  |  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}  |  Mode: {mode_label}")
-            print(f"  Opening browser → {url}\n")
-            webbrowser.open(url)
-            result = observer.simulate_play(
+            print(f"  Deck: {args.deck}  |  Stake: {args.stake}  |  Env: {args.env}  |  Mode: {mode_label}")
+            print(f"  Dashboard → {url}\n")
+            # Per-session play mode: each WS client gets its own game loop.
+            # The web server handles everything — main thread just keeps alive.
+            observer.set_game_params(
+                mode="play",
                 back_key=args.deck,
                 stake=args.stake,
-                seed=seed,
                 simplified=simplified,
-                adapter=adapter,
             )
+            print("  Waiting for players… press Ctrl+C to stop.\n")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n  Shutting down.")
         else:
             # Watch mode
             from emulator.engine.runner import greedy_play_agent, random_agent
@@ -301,16 +307,16 @@ def _run_command(args: argparse.Namespace) -> None:
                 adapter=adapter,
             )
 
-        # Final summary (inside `with` so the web server is still alive)
-        won = result.get("won", False)
-        rounds = result.get("round", 0)
-        actions = result.get("actions_taken", 0)
-        dollars = result.get("dollars", 0)
-        status = "WON" if won else "GAME OVER"
-        print(f"\n  {status}  ·  Rounds: {rounds}  ·  Actions: {actions}  ·  Final $: {dollars}\n")
+            # Final summary (inside `with` so the web server is still alive)
+            won = result.get("won", False)
+            rounds = result.get("round", 0)
+            actions = result.get("actions_taken", 0)
+            dollars = result.get("dollars", 0)
+            status = "WON" if won else "GAME OVER"
+            print(f"\n  {status}  ·  Rounds: {rounds}  ·  Actions: {actions}  ·  Final $: {dollars}\n")
 
-        if args.web:
-            print("  Dashboard is still open — press Ctrl+C to close.\n")
+            if args.web:
+                print("  Dashboard is still open — press Ctrl+C to close.\n")
             try:
                 while True:
                     time.sleep(1)

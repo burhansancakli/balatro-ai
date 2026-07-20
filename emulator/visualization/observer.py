@@ -406,6 +406,11 @@ class GameObserver:
 
         return self
 
+    def set_game_params(self, **kwargs: Any) -> None:
+        """Set parameters for per-session play mode (call before game loop starts)."""
+        if self._web:
+            self._web._game_params = kwargs
+
     def stop(self) -> None:
         if self._web:
             self._web.stop()
