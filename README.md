@@ -131,3 +131,13 @@ The flat PPO baseline uses the same env and obs space but:
 Mac users: if an "Application closed unexpectedly" popup shows up
 repeatedly, disable it with
 `defaults write com.apple.CrashReporter DialogType none`.
+
+
+## Credits
+
+This project uses the Balatro emulator from
+https://github.com/TylerFlar/jackdaw-balatro.
+
+Many thanks to TylerFlar for making the emulator available.
+
+## License
