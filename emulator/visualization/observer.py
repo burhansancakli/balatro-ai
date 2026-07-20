@@ -572,12 +572,25 @@ class GameObserver:
             return filter_legal_actions(actions) if simplified else actions
 
         actions_taken = 0
+        import random as _rng
+
         while actions_taken < max_actions:
             phase = gs.get("phase")
-            if phase == GamePhase.GAME_OVER:
-                break
-            if gs.get("won") and phase == GamePhase.SHOP:
-                break
+            if phase == GamePhase.GAME_OVER or (gs.get("won") and phase == GamePhase.SHOP):
+                # Emit final state and wait for "NewGame" command from browser
+                gs["actions_taken"] = actions_taken
+                self.emit(gs, legal_actions=[{"type": "NewGame", "label": "New Game"}])
+                while True:
+                    cmd = self._action_queue.get()
+                    if isinstance(cmd, dict) and cmd.get("type") == "NewGame":
+                        # Start a new run
+                        new_seed = f"SEED{_rng.randint(1000, 9999)}"
+                        gs = initialize_run(back_key, stake, new_seed, challenge=challenge)
+                        if simplified:
+                            apply_to_run(gs)
+                        actions_taken = 0
+                        break
+                continue
 
             legal = _legal(gs)
             if not legal:

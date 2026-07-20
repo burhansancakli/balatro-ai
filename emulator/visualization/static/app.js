@@ -17,9 +17,18 @@ function fmt(n){ return n==null?'—':Number(n).toLocaleString(); }
 
 /* ── WebSocket ───────────────────────────────────────────── */
 function connect(){
-  // WS_PORT is injected into index.html by the Python server at request time
-  const wsPort = window.WS_PORT || (parseInt(location.port||'8765') + 1);
-  ws = new WebSocket(`ws://${location.hostname}:${wsPort}`);
+  // WS_PORT is injected into index.html by the Python server at request time.
+  // Behind Cloudflare (HTTPS), both HTTP and WS share the same port (443).
+  const isSecure = location.protocol === 'https:';
+  let wsUrl;
+  if(isSecure){
+    // wss:// on same host (Cloudflare handles TLS termination)
+    wsUrl = `wss://${location.host}`;
+  } else {
+    const wsPort = window.WS_PORT || (parseInt(location.port||'8765') + 1);
+    wsUrl = `ws://${location.hostname}:${wsPort}`;
+  }
+  ws = new WebSocket(wsUrl);
   ws.onopen = ()=>{ $('conn').className='ok'; $('connecting').style.display='none'; clearTimeout(reconnT); };
   ws.onmessage = e=>{
     if(isReplay){
@@ -253,6 +262,13 @@ function renderGameOver(s, c){
     p.innerHTML = `<div class="ph">Run Complete</div><div class="phase-screen"><div class="ps-big" style="color:#f0c040">🏆 You Won!</div><div class="ps-sub">Ante ${s.ante} · ${s.round} rounds</div></div>`;
   else
     p.innerHTML = `<div class="ph">Game Over</div><div class="phase-screen"><div class="ps-big" style="color:#ff5a5a">💀 Game Over</div><div class="ps-sub">Reached Ante ${s.ante} · Round ${s.round}</div></div>`;
+  // New Game button
+  if(isPlay){
+    const btn = mk('button', 'btn primary', '🔄 New Game');
+    btn.style.marginTop = '16px';
+    btn.onclick = ()=>send({type:'NewGame'});
+    p.querySelector('.phase-screen').appendChild(btn);
+  }
   c.appendChild(p);
 }
 
